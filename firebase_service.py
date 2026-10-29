@@ -618,6 +618,82 @@ def _is_valid_id(val):
     return len(alnum) >= 3
 
 
+def _normalize_matric(val):
+    """Return normalized alphanumeric Matric Number if valid, else empty string."""
+    if not _is_valid_id(val):
+        return ""
+    return re.sub(r"[^A-Z0-9]+", "", str(val).strip().upper())
+
+
+def _normalize_gts(val):
+    """
+    Return (alnum_key, digits_key) for a valid GTS Number, else ("", "").
+    Matches e.g. 'GTS 2618435', 'GTS2618435', and '2618435'.
+    """
+    if not _is_valid_id(val):
+        return "", ""
+    alnum = re.sub(r"[^A-Z0-9]+", "", str(val).strip().upper())
+    digits = re.sub(r"[^0-9]+", "", str(val))
+    return alnum, (digits if len(digits) >= 5 else "")
+
+
+def find_duplicate_student_in_class(
+    class_id,
+    matric_number="",
+    gts_number="",
+    exclude_student_id=None,
+    existing_students=None,
+):
+    """
+    Check if any student in `class_id` already has the given Matric Number or GTS Number.
+    Ignores placeholder values like 'NOT AVAILABLE' / 'N/A'.
+    """
+    mat_norm = _normalize_matric(matric_number)
+    gts_alnum, gts_digits = _normalize_gts(gts_number)
+
+    if not mat_norm and not gts_alnum:
+        return {"duplicate": False}
+
+    students = existing_students if existing_students is not None else get_students_by_class(class_id)
+    for st in students:
+        if exclude_student_id and st.get("id") == exclude_student_id:
+            continue
+
+        st_mat_norm = _normalize_matric(st.get("matric_number", ""))
+        st_gts_alnum, st_gts_digits = _normalize_gts(st.get("gts_number", ""))
+
+        # 1. Check Duplicate Matric Number
+        if mat_norm and st_mat_norm and mat_norm == st_mat_norm:
+            return {
+                "duplicate": True,
+                "field": "Matric Number",
+                "value": matric_number,
+                "student": st,
+                "error": (
+                    f"Duplicate Matric Number: '{matric_number}' is already registered in this class "
+                    f"under '{st.get('full_name')}' (Roster #{st.get('serial_no')})."
+                ),
+            }
+
+        # 2. Check Duplicate GTS Number
+        if gts_alnum and st_gts_alnum and (
+            gts_alnum == st_gts_alnum
+            or (gts_digits and st_gts_digits and gts_digits == st_gts_digits)
+        ):
+            return {
+                "duplicate": True,
+                "field": "GTS Number",
+                "value": gts_number,
+                "student": st,
+                "error": (
+                    f"Duplicate GTS Number: '{gts_number}' is already registered in this class "
+                    f"under '{st.get('full_name')}' (Roster #{st.get('serial_no')})."
+                ),
+            }
+
+    return {"duplicate": False}
+
+
 def _make_student_doc_id(class_id, full_name="", matric_number="", gts_number="", phone_number=""):
     """
     Build a unique Firestore document ID for a student in a class.
@@ -771,14 +847,16 @@ def student_self_update_matric(class_id, student_id, verification_token, new_mat
         }
 
     # Ensure no other student in this class already has this Matric Number
-    for other in get_students_by_class(class_id):
-        if other.get("id") != student_id:
-            other_mat = re.sub(r"[^A-Z0-9]+", "", (other.get("matric_number") or "").upper())
-            if _is_valid_id(other.get("matric_number")) and other_mat == re.sub(r"[^A-Z0-9]+", "", new_matric_clean):
-                return {
-                    "ok": False,
-                    "error": f"Matric Number '{new_matric_clean}' is already registered to another student in this class.",
-                }
+    dup_check = find_duplicate_student_in_class(
+        class_id=class_id,
+        matric_number=new_matric_clean,
+        exclude_student_id=student_id,
+    )
+    if dup_check.get("duplicate"):
+        return {
+            "ok": False,
+            "error": dup_check["error"],
+        }
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     res = update_student_fields(
@@ -835,38 +913,24 @@ def student_self_register_in_class(
     if not _is_valid_id(matric_clean):
         matric_clean = "NOT AVAILABLE"
 
-    # Check if student is already on the class list to prevent duplicates
+    # Check if student's Matric Number or GTS Number is already on the class list
     existing_students = get_students_by_class(class_id)
-    new_gts_alnum = re.sub(r"[^A-Z0-9]+", "", gts_clean)
-    new_gts_digits = re.sub(r"[^0-9]+", "", gts_clean)
-    new_mat_alnum = re.sub(r"[^A-Z0-9]+", "", matric_clean) if _is_valid_id(matric_clean) else ""
+    dup_check = find_duplicate_student_in_class(
+        class_id=class_id,
+        matric_number=matric_clean,
+        gts_number=gts_clean,
+        existing_students=existing_students,
+    )
+    if dup_check.get("duplicate"):
+        return {
+            "ok": False,
+            "already_exists": True,
+            "student": dup_check.get("student"),
+            "error": dup_check["error"],
+        }
 
     for st in existing_students:
-        st_gts_alnum = re.sub(r"[^A-Z0-9]+", "", (st.get("gts_number") or "").upper())
-        st_gts_digits = re.sub(r"[^0-9]+", "", (st.get("gts_number") or ""))
-        st_mat_raw = (st.get("matric_number") or "").upper()
-        st_mat_alnum = re.sub(r"[^A-Z0-9]+", "", st_mat_raw) if _is_valid_id(st_mat_raw) else ""
         st_name = re.sub(r"\s+", " ", (st.get("full_name") or "")).strip().upper()
-
-        if new_gts_alnum and st_gts_alnum and (
-            new_gts_alnum == st_gts_alnum
-            or (len(new_gts_digits) >= 6 and new_gts_digits == st_gts_digits)
-        ):
-            return {
-                "ok": False,
-                "already_exists": True,
-                "student": st,
-                "error": f"Your GTS Number ({st.get('gts_number')}) is already on the class list under '{st.get('full_name')}' (Roster #{st.get('serial_no')}).",
-            }
-
-        if new_mat_alnum and st_mat_alnum and new_mat_alnum == st_mat_alnum:
-            return {
-                "ok": False,
-                "already_exists": True,
-                "student": st,
-                "error": f"Matric Number '{matric_clean}' is already registered on the class list under '{st.get('full_name')}' (Roster #{st.get('serial_no')}).",
-            }
-
         if full_name_clean == st_name:
             return {
                 "ok": False,
@@ -912,14 +976,28 @@ def add_student_to_class(
     gts_number,
     phone_number="",
 ):
-    """Add or update a single student record in a class."""
-    full_name_clean = (full_name or "").strip()
-    matric_clean = (matric_number or "").strip().upper()
-    gts_clean = (gts_number or "").strip().upper()
-    phone_clean = (phone_number or "").strip()
+    """Add a single student record in a class after checking for duplicate Matric Number or GTS Number."""
+    full_name_clean = re.sub(r"\s+", " ", (full_name or "")).strip()
+    matric_clean = re.sub(r"\s+", " ", (matric_number or "")).strip().upper()
+    gts_clean = re.sub(r"\s+", "", (gts_number or "")).strip().upper()
+    phone_clean = re.sub(r"\s+", " ", (phone_number or "")).strip()
 
     if not full_name_clean:
         return {"ok": False, "error": "Student Full Name is required."}
+
+    # Check for duplicate Matric Number or GTS Number before adding
+    dup_check = find_duplicate_student_in_class(
+        class_id=class_id,
+        matric_number=matric_clean,
+        gts_number=gts_clean,
+    )
+    if dup_check.get("duplicate"):
+        return {
+            "ok": False,
+            "already_exists": True,
+            "student": dup_check.get("student"),
+            "error": dup_check["error"],
+        }
 
     res = bulk_upsert_students(
         class_id=class_id,
@@ -932,16 +1010,18 @@ def add_student_to_class(
                 "phone_number": phone_clean,
             }
         ],
+        skip_existing_duplicates=False,
     )
     if res["ok"]:
         return {"ok": True, "count": res.get("count", 1)}
     return res
 
 
-def bulk_upsert_students(class_id, lecturer_id, students_list):
+def bulk_upsert_students(class_id, lecturer_id, students_list, skip_existing_duplicates=True):
     """
     Fast batch write of students into Firestore 'class_students' collection using :commit.
-    Handles placeholder Matric Numbers ('NOT AVALABLE', 'N/A', etc.) by keying on GTS Number + Name.
+    Checks for duplicate Matric Number or GTS Number both against existing students in the class
+    and within the uploaded spreadsheet itself.
     """
     if not class_id or not students_list:
         return {"ok": False, "error": "No valid student records found to upload."}
@@ -949,6 +1029,21 @@ def bulk_upsert_students(class_id, lecturer_id, students_list):
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     writes = []
     seen_doc_ids = set()
+    seen_matric_norms = set()
+    seen_gts_alnums = set()
+    seen_gts_digits = set()
+    skipped_duplicates = 0
+
+    if skip_existing_duplicates:
+        for existing_st in get_students_by_class(class_id):
+            ex_mat = _normalize_matric(existing_st.get("matric_number", ""))
+            if ex_mat:
+                seen_matric_norms.add(ex_mat)
+            ex_gts_alnum, ex_gts_dig = _normalize_gts(existing_st.get("gts_number", ""))
+            if ex_gts_alnum:
+                seen_gts_alnums.add(ex_gts_alnum)
+            if ex_gts_dig:
+                seen_gts_digits.add(ex_gts_dig)
 
     for item in students_list:
         full_name = re.sub(r"\s+", " ", str(item.get("full_name") or "")).strip()
@@ -959,6 +1054,18 @@ def bulk_upsert_students(class_id, lecturer_id, students_list):
         if not full_name and not matric_number and not gts_number:
             continue
 
+        mat_norm = _normalize_matric(matric_number)
+        gts_alnum, gts_dig = _normalize_gts(gts_number)
+
+        # Check for duplicate Matric Number or GTS Number
+        if (
+            (mat_norm and mat_norm in seen_matric_norms)
+            or (gts_alnum and gts_alnum in seen_gts_alnums)
+            or (gts_dig and gts_dig in seen_gts_digits)
+        ):
+            skipped_duplicates += 1
+            continue
+
         doc_id = _make_student_doc_id(
             class_id=class_id,
             full_name=full_name,
@@ -967,8 +1074,16 @@ def bulk_upsert_students(class_id, lecturer_id, students_list):
             phone_number=phone_number,
         )
         if doc_id in seen_doc_ids:
+            skipped_duplicates += 1
             continue
+
         seen_doc_ids.add(doc_id)
+        if mat_norm:
+            seen_matric_norms.add(mat_norm)
+        if gts_alnum:
+            seen_gts_alnums.add(gts_alnum)
+        if gts_dig:
+            seen_gts_digits.add(gts_dig)
 
         doc_path = f"projects/{PROJECT_ID}/databases/(default)/documents/class_students/{doc_id}"
         student_doc = {
@@ -990,6 +1105,11 @@ def bulk_upsert_students(class_id, lecturer_id, students_list):
         )
 
     if not writes:
+        if skipped_duplicates > 0:
+            return {
+                "ok": False,
+                "error": f"All {skipped_duplicates} student record(s) in the file were skipped because their Matric Number or GTS Number already exists in this class.",
+            }
         return {"ok": False, "error": "No valid student rows found in the uploaded data."}
 
     commit_url = f"{FIRESTORE_BASE_URL}:commit"
@@ -1003,7 +1123,7 @@ def bulk_upsert_students(class_id, lecturer_id, students_list):
                     "ok": False,
                     "error": f"Firestore batch commit failed ({resp.status_code}): {resp.text}",
                 }
-        return {"ok": True, "count": len(writes)}
+        return {"ok": True, "count": len(writes), "skipped_duplicates": skipped_duplicates}
     except Exception as exc:
         return {"ok": False, "error": f"Failed to save student records: {exc}"}
 

@@ -29,6 +29,7 @@ from firebase_service import (
     delete_user,
     enrich_students_with_assessments,
     ensure_default_admin,
+    find_duplicate_student_in_class,
     generate_sample_xlsx_bytes,
     get_all_lecturers,
     get_assessment_by_id,
@@ -819,8 +820,10 @@ def upload_class_students(class_id):
 
     if res["ok"]:
         count = res.get("count", 0)
+        skipped = res.get("skipped_duplicates", 0)
+        skip_note = f" ({skipped} duplicate Matric/GTS record{'s' if skipped != 1 else ''} skipped)" if skipped else ""
         flash(
-            f"Successfully uploaded {count} student record{'s' if count != 1 else ''} into {cls.get('course_code')}!",
+            f"Successfully uploaded {count} student record{'s' if count != 1 else ''} into {cls.get('course_code')}{skip_note}!",
             "success",
         )
     else:
@@ -846,6 +849,16 @@ def update_class_student(class_id, student_id):
     matric_number = request.form.get("matric_number", student.get("matric_number", "")).strip().upper()
     gts_number = request.form.get("gts_number", student.get("gts_number", "")).strip().upper()
     phone_number = request.form.get("phone_number", student.get("phone_number", "")).strip()
+
+    dup_check = find_duplicate_student_in_class(
+        class_id=class_id,
+        matric_number=matric_number,
+        gts_number=gts_number,
+        exclude_student_id=student_id,
+    )
+    if dup_check.get("duplicate"):
+        flash(dup_check["error"], "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="students"))
 
     res = update_student_fields(
         student_id,
