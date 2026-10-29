@@ -223,6 +223,19 @@
     </button>
 
     <button type="button"
+            id="tab-btn-cbt"
+            onclick="switchClassTab('cbt')"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+      CBT Tests &amp; Exams
+      <span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 text-emerald-800 font-bold">
+        {{ (cbt_tests | length) if cbt_tests else 0 }}
+      </span>
+    </button>
+
+    <button type="button"
             id="tab-btn-sessions"
             onclick="switchClassTab('sessions')"
             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider transition">
@@ -1596,6 +1609,491 @@
     </div>
 
   </div>
+
+  <!-- ========================================================= -->
+  <!-- TAB 3: CBT (COMPUTER-BASED TEST) PORTAL & MANAGEMENT      -->
+  <!-- ========================================================= -->
+  <div id="tab-panel-cbt" class="hidden grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    {% if is_owner or is_admin %}
+      <!-- Left 4 Cols: Create CBT Test (Upload Questions via Excel/CSV) + List of CBT Tests -->
+      <div class="lg:col-span-4 space-y-6">
+
+        <!-- Card 1: Create New CBT Test -->
+        <div class="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-indigo-950 to-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-bold">Create CBT Test (Upload Excel)</h2>
+              <p class="text-[11px] text-indigo-200">Create timed online test for {{ class_page.course_code }}</p>
+            </div>
+            <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">+</span>
+          </div>
+
+          <form method="POST"
+                action="{{ url_for('create_class_cbt', class_id=class_page.id) }}"
+                enctype="multipart/form-data"
+                class="p-5 space-y-3.5">
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                CBT Test Title *
+              </label>
+              <input type="text"
+                     name="title"
+                     required
+                     placeholder="e.g. Mid-Semester CBT Test or Quiz 1"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                  Duration (Mins) *
+                </label>
+                <input type="number"
+                       name="duration_minutes"
+                       min="1"
+                       max="300"
+                       required
+                       value="20"
+                       class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                  Total Marks *
+                </label>
+                <input type="number"
+                       name="total_marks"
+                       min="1"
+                       max="100"
+                       step="any"
+                       required
+                       value="20"
+                       class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+
+            <!-- Upload Questions Excel / CSV -->
+            <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="block text-xs font-bold text-indigo-950">
+                  Upload Questions (.xlsx / .csv) *
+                </label>
+                <div class="flex items-center gap-1.5 text-[11px]">
+                  <a href="{{ url_for('download_cbt_template', ext='xlsx') }}"
+                     class="font-bold text-indigo-600 hover:underline">Template.xlsx</a>
+                  <span class="text-slate-300">|</span>
+                  <a href="{{ url_for('download_cbt_template', ext='csv') }}"
+                     class="font-bold text-indigo-600 hover:underline">.csv</a>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-600 font-mono">
+                Columns: Question | Option A | Option B | Option C | Option D | Correct Answer (A/B/C/D)
+              </p>
+              <input type="file"
+                     name="questions_file"
+                     accept=".xlsx,.csv,.txt"
+                     required
+                     class="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer" />
+            </div>
+
+            <!-- Scheduled Open & Close Time (Optional) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                  Open Time (Optional)
+                </label>
+                <input type="datetime-local"
+                       name="open_at"
+                       class="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                  Close Time (Optional)
+                </label>
+                <input type="datetime-local"
+                       name="close_at"
+                       class="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Instructions (Optional)
+              </label>
+              <input type="text"
+                     name="instructions"
+                     placeholder="e.g. Answer all questions before time expires."
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div class="space-y-2 pt-1">
+              <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <input type="checkbox" name="is_active" value="true" checked class="rounded text-indigo-600 focus:ring-indigo-500" />
+                Activate CBT Test Immediately (or at Scheduled Open Time)
+              </label>
+
+              <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <input type="checkbox" name="show_result_immediately" value="true" checked class="rounded text-indigo-600 focus:ring-indigo-500" />
+                Show Student Score Immediately After Submission
+              </label>
+            </div>
+
+            <button type="submit"
+                    class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition">
+              Create CBT Test &amp; Upload Questions
+            </button>
+          </form>
+        </div>
+
+        <!-- Card 2: Created CBT Tests List -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Course CBT Tests ({{ (cbt_tests | length) if cbt_tests else 0 }})
+            </h3>
+          </div>
+
+          {% if cbt_tests %}
+            <div class="divide-y divide-slate-200">
+              {% for ct in cbt_tests %}
+                {% set is_sel_cbt = (selected_cbt and selected_cbt.id == ct.id) %}
+                {% set sub_cnt = (ct.submissions | length) if ct.submissions else 0 %}
+                <div class="p-4 flex items-center justify-between gap-2 transition {{ 'bg-indigo-50/80 border-l-4 border-indigo-600' if is_sel_cbt else 'hover:bg-slate-50' }}">
+                  <a href="{{ url_for('view_class_page', class_id=class_page.id, tab='cbt', cbt_id=ct.id) }}"
+                     class="flex-1 block">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase {{ 'bg-emerald-100 text-emerald-800' if ct.is_open_now else ('bg-amber-100 text-amber-800' if ct.status_code == 'scheduled' else 'bg-slate-200 text-slate-700') }}">
+                        {{ ct.status_label }}
+                      </span>
+                      <span class="text-[11px] font-mono text-slate-500">
+                        {{ ct.question_count }} Qs &bull; {{ ct.duration_minutes }}m &bull; {{ ct.total_marks }} Marks
+                      </span>
+                    </div>
+                    <p class="text-sm font-bold text-slate-900 mt-1">{{ ct.title }}</p>
+                    <p class="text-[11px] text-slate-500 mt-0.5">
+                      Submissions: <strong>{{ sub_cnt }}</strong> / {{ students | length }} students
+                    </p>
+                  </a>
+
+                  <div class="flex items-center gap-1.5">
+                    <form method="POST"
+                          action="{{ url_for('toggle_class_cbt', class_id=class_page.id, cbt_id=ct.id) }}"
+                          class="inline">
+                      <button type="submit"
+                              class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold {{ 'bg-rose-100 text-rose-700 hover:bg-rose-200' if ct.is_active else 'bg-emerald-600 text-white hover:bg-emerald-500' }} transition">
+                        {{ 'Deactivate' if ct.is_active else 'Activate' }}
+                      </button>
+                    </form>
+
+                    <form method="POST"
+                          action="{{ url_for('delete_class_cbt_route', class_id=class_page.id, cbt_id=ct.id) }}"
+                          onsubmit="return confirm('Delete CBT Test {{ ct.title | e }} and all its submissions?');"
+                          class="inline">
+                      <button type="submit"
+                              title="Delete CBT Test"
+                              class="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition">
+                        &times;
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="p-6 text-center text-xs text-slate-500">
+              No CBT Tests created yet. Upload an Excel or CSV file above to create your first CBT Test.
+            </div>
+          {% endif %}
+        </div>
+
+      </div>
+    {% endif %}
+
+    <!-- Right 8 Cols (or 12 Cols for Students): Active CBT Management + Student CBT Cards -->
+    <div class="{{ 'lg:col-span-8' if (is_owner or is_admin) else 'lg:col-span-12' }} space-y-6">
+
+      {% if (is_owner or is_admin) and selected_cbt %}
+        <!-- Lecturer CBT Control & Schedule Card -->
+        <div class="bg-white rounded-2xl border-2 border-indigo-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase {{ 'bg-emerald-500 text-slate-950' if selected_cbt.is_open_now else ('bg-amber-400 text-slate-950' if selected_cbt.status_code == 'scheduled' else 'bg-rose-500 text-white') }}">
+                  {{ selected_cbt.status_label }}
+                </span>
+                <span class="text-xs text-indigo-200 font-mono">
+                  {{ selected_cbt.question_count }} Questions &bull; {{ selected_cbt.duration_minutes }} Mins &bull; {{ selected_cbt.total_marks }} Marks
+                </span>
+              </div>
+              <h2 class="text-lg font-bold mt-1">{{ selected_cbt.title }}</h2>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <a href="{{ url_for('student_cbt_portal', class_code=class_page.class_code, cbt_id=selected_cbt.id) }}"
+                 target="_blank"
+                 class="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold border border-white/20 transition">
+                Open Student CBT Link &nearr;
+              </a>
+
+              <form method="POST"
+                    action="{{ url_for('toggle_class_cbt', class_id=class_page.id, cbt_id=selected_cbt.id) }}"
+                    class="inline">
+                {% if selected_cbt.is_active %}
+                  <button type="submit"
+                          class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-xs transition">
+                    Deactivate CBT Now
+                  </button>
+                {% else %}
+                  <button type="submit"
+                          class="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-xs transition">
+                    Activate CBT Now
+                  </button>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+
+          <!-- Schedule & Timing Controls + Re-Upload Questions Bar -->
+          <div class="p-5 bg-slate-50 border-b border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            <form method="POST"
+                  action="{{ url_for('update_class_cbt_schedule', class_id=class_page.id, cbt_id=selected_cbt.id) }}"
+                  class="md:col-span-7 bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Open / Close Schedule &amp; Timer Settings
+                </h3>
+                <span class="text-[11px] text-slate-400">Auto-Opens &amp; Auto-Closes</span>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Open Date &amp; Time</label>
+                  <input type="datetime-local"
+                         name="open_at"
+                         value="{{ selected_cbt.open_at or '' }}"
+                         class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono" />
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Close Date &amp; Time</label>
+                  <input type="datetime-local"
+                         name="close_at"
+                         value="{{ selected_cbt.close_at or '' }}"
+                         class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono" />
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Duration (Mins)</label>
+                  <input type="number"
+                         name="duration_minutes"
+                         min="1"
+                         max="300"
+                         value="{{ selected_cbt.duration_minutes or 20 }}"
+                         class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono" />
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div class="flex flex-wrap items-center gap-4">
+                  <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input type="checkbox" name="is_active" value="true" {% if selected_cbt.is_active %}checked{% endif %} class="rounded text-indigo-600" />
+                    Activated
+                  </label>
+                  <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input type="checkbox" name="show_result_immediately" value="true" {% if selected_cbt.show_result_immediately %}checked{% endif %} class="rounded text-indigo-600" />
+                    Show Score to Student
+                  </label>
+                </div>
+
+                <button type="submit"
+                        class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition">
+                  Save Schedule
+                </button>
+              </div>
+            </form>
+
+            <!-- Update / Append Questions via Excel/CSV -->
+            <form method="POST"
+                  action="{{ url_for('upload_class_cbt_questions', class_id=class_page.id, cbt_id=selected_cbt.id) }}"
+                  enctype="multipart/form-data"
+                  class="md:col-span-5 bg-white p-4 rounded-xl border border-slate-200 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Update Questions (.xlsx / .csv)
+                </h3>
+                <select name="upload_mode" class="text-[11px] border border-slate-300 rounded-lg px-2 py-0.5 bg-slate-50">
+                  <option value="replace">Replace All</option>
+                  <option value="append">Append to Existing</option>
+                </select>
+              </div>
+              <input type="file"
+                     name="questions_file"
+                     accept=".xlsx,.csv,.txt"
+                     required
+                     class="w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-indigo-50 file:text-indigo-700" />
+              <button type="submit"
+                      class="w-full py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition">
+                Upload Questions
+              </button>
+            </form>
+          </div>
+
+          <!-- Collapsible Preview of Uploaded Questions -->
+          <details class="border-b border-slate-200 bg-white">
+            <summary class="px-6 py-3 text-xs font-bold text-indigo-700 cursor-pointer hover:bg-indigo-50/50 flex items-center justify-between">
+              <span>Preview Uploaded CBT Questions &amp; Answer Key ({{ selected_cbt.questions | length }} Questions)</span>
+              <span class="text-[11px] text-slate-400">Click to Expand / Collapse</span>
+            </summary>
+            <div class="px-6 pb-4 max-h-72 overflow-y-auto divide-y divide-slate-100 text-xs">
+              {% for q in selected_cbt.questions %}
+                <div class="py-2.5 space-y-1">
+                  <p class="font-bold text-slate-900">
+                    Q{{ q.q_no or loop.index }}. {{ q.question }}
+                    <span class="ml-2 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[10px]">
+                      Ans: {{ q.answer }} ({{ q.points or 1 }} pt)
+                    </span>
+                  </p>
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600 font-mono">
+                    <span>A: {{ q.option_a }}</span>
+                    <span>B: {{ q.option_b }}</span>
+                    <span>C: {{ q.option_c }}</span>
+                    <span>D: {{ q.option_d }}</span>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+
+          <!-- CBT Student Submissions & Results Table -->
+          <div class="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-white">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">
+                CBT Submissions &amp; Auto-Graded Results ({{ (selected_cbt.submissions | length) if selected_cbt.submissions else 0 }} Submitted)
+              </h3>
+              <p class="text-xs text-slate-500">
+                Scores are also automatically synced to the <strong>Assignments &amp; Projects Gradebook</strong>.
+              </p>
+            </div>
+
+            <a href="{{ url_for('export_cbt_results_csv', class_id=class_page.id, cbt_id=selected_cbt.id) }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition">
+              Export CBT Results (CSV)
+            </a>
+          </div>
+
+          {% set cbt_subs = selected_cbt.submissions or {} %}
+          {% if cbt_subs %}
+            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="sticky top-0 bg-slate-100 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  <tr>
+                    <th class="py-3 px-4">Student Name</th>
+                    <th class="py-3 px-4">GTS / Matric No.</th>
+                    <th class="py-3 px-4 text-center">Correct</th>
+                    <th class="py-3 px-4 text-center">Score (/{{ selected_cbt.total_marks }})</th>
+                    <th class="py-3 px-4">Submitted At</th>
+                    <th class="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                  {% for st_id, sub in cbt_subs.items() %}
+                    <tr class="hover:bg-slate-50">
+                      <td class="py-2.5 px-4 font-bold text-slate-900">{{ sub.full_name }}</td>
+                      <td class="py-2.5 px-4 font-mono text-slate-600">{{ sub.gts_number or sub.matric_number }}</td>
+                      <td class="py-2.5 px-4 text-center font-mono">
+                        {{ sub.correct_count }} / {{ sub.total_questions }} ({{ sub.percentage }}%)
+                      </td>
+                      <td class="py-2.5 px-4 text-center font-mono font-bold text-emerald-700">
+                        {{ sub.score }} / {{ sub.max_score }}
+                      </td>
+                      <td class="py-2.5 px-4 font-mono text-[11px] text-slate-500">{{ sub.submitted_at }}</td>
+                      <td class="py-2.5 px-4 text-right">
+                        <form method="POST"
+                              action="{{ url_for('reset_cbt_attempt_route', class_id=class_page.id, cbt_id=selected_cbt.id) }}"
+                              onsubmit="return confirm('Reset CBT attempt for {{ sub.full_name | e }} so they can retake the test?');"
+                              class="inline">
+                          <input type="hidden" name="student_id" value="{{ st_id }}" />
+                          <button type="submit"
+                                  class="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-[11px] font-semibold">
+                            Reset Attempt
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-8 text-center text-xs text-slate-500">
+              No students have submitted this CBT test yet. Share the class link (<code>{{ class_page.class_code }}</code>) with your students.
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <!-- Public / Student CBT Tests Directory Card -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">
+              Available Course CBT Tests ({{ (cbt_tests | length) if cbt_tests else 0 }})
+            </h2>
+            <p class="text-xs text-slate-500">
+              Click <strong>Take CBT Test</strong> when a test is OPEN to verify your GTS/Matric Number and begin.
+            </p>
+          </div>
+        </div>
+
+        {% if cbt_tests %}
+          <div class="divide-y divide-slate-200">
+            {% for ct in cbt_tests %}
+              <div class="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50/80 transition">
+                <div class="space-y-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase {{ 'bg-emerald-100 text-emerald-800 border border-emerald-300' if ct.is_open_now else ('bg-amber-100 text-amber-800 border border-amber-300' if ct.status_code == 'scheduled' else 'bg-slate-100 text-slate-600 border border-slate-300') }}">
+                      {{ ct.status_label }}
+                    </span>
+                    <span class="text-xs font-mono text-slate-500">
+                      {{ ct.question_count }} Questions &bull; {{ ct.duration_minutes }} Minutes &bull; {{ ct.total_marks }} Marks
+                    </span>
+                  </div>
+                  <h3 class="text-base font-bold text-slate-900">{{ ct.title }}</h3>
+                  {% if ct.instructions %}
+                    <p class="text-xs text-slate-600">{{ ct.instructions }}</p>
+                  {% endif %}
+                  {% if ct.open_at or ct.close_at %}
+                    <p class="text-[11px] font-mono text-slate-500">
+                      {% if ct.open_at %}Opens: {{ ct.open_at.replace('T', ' ') }}{% endif %}
+                      {% if ct.open_at and ct.close_at %} &bull; {% endif %}
+                      {% if ct.close_at %}Closes: {{ ct.close_at.replace('T', ' ') }}{% endif %}
+                    </p>
+                  {% endif %}
+                </div>
+
+                <div class="shrink-0">
+                  <a href="{{ url_for('student_cbt_portal', class_code=class_page.class_code, cbt_id=ct.id) }}"
+                     class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl {{ 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm' if ct.is_open_now else 'bg-slate-900 hover:bg-slate-800 text-white' }} text-xs font-bold transition">
+                    {% if ct.is_open_now %}
+                      Start CBT Test &rarr;
+                    {% else %}
+                      View My CBT Result
+                    {% endif %}
+                  </a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="p-10 text-center text-xs text-slate-500">
+            No CBT tests have been posted for <strong>{{ class_page.course_code }}</strong> yet.
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+  </div>
 </div>
 
 {% if is_owner or is_admin %}
@@ -1819,12 +2317,14 @@
       verify: document.getElementById('tab-panel-verify'),
       students: document.getElementById('tab-panel-students'),
       assessments: document.getElementById('tab-panel-assessments'),
+      cbt: document.getElementById('tab-panel-cbt'),
       sessions: document.getElementById('tab-panel-sessions')
     };
     const btns = {
       verify: document.getElementById('tab-btn-verify'),
       students: document.getElementById('tab-btn-students'),
       assessments: document.getElementById('tab-btn-assessments'),
+      cbt: document.getElementById('tab-btn-cbt'),
       sessions: document.getElementById('tab-btn-sessions')
     };
 

@@ -629,6 +629,8 @@ def delete_class_page(class_id):
             # Also delete associated sessions, assessments, and students for this class
             for sess in get_sessions_by_class(class_id):
                 delete_lecture_session(sess.get("id"))
+            for cbt in get_cbt_tests_by_class(class_id):
+                delete_cbt_test(cbt.get("id"))
             for assess in get_assessments_by_class(class_id):
                 delete_class_assessment(assess.get("id"))
             clear_class_students(class_id)
@@ -1952,6 +1954,610 @@ def parse_scores_spreadsheet(filename, file_bytes, class_students):
         }
 
     return {"ok": True, "scores": matched_scores}
+
+
+# ==========================================
+# CBT (COMPUTER-BASED TEST) SYSTEM (STEP 5)
+# ==========================================
+def _parse_iso_dt_minutes(dt_str):
+    """
+    Parse an HTML datetime-local string ('YYYY-MM-DDTHH:MM' or 'YYYY-MM-DD HH:MM')
+    into a naive tuple comparable against local WAT (UTC+1) time string 'YYYY-MM-DDTHH:MM'.
+    """
+    if not dt_str:
+        return ""
+    cleaned = str(dt_str).strip().replace(" ", "T")
+    return cleaned[:16]
+
+
+def _now_wat_iso_minutes():
+    """Return current time in WAT (UTC+1, Nigeria Standard Time) formatted as 'YYYY-MM-DDTHH:MM'."""
+    wat_ts = time.time() + 3600
+    wat_dt = datetime.fromtimestamp(wat_ts, tz=timezone.utc)
+    return wat_dt.strftime("%Y-%m-%dT%H:%M")
+
+
+def compute_cbt_status(cbt_doc):
+    """
+    Evaluate whether a CBT test is currently OPEN for students based on:
+    1. `is_active` (manual Lecturer Activate / Deactivate switch)
+    2. `open_at` (optional scheduled start time, YYYY-MM-DDTHH:MM)
+    3. `close_at` (optional scheduled end time, YYYY-MM-DDTHH:MM)
+     Attaches `is_open_now`, `status_code`, and `status_label` onto `cbt_doc`.
+    """
+    if not cbt_doc:
+        return cbt_doc
+
+    is_active = bool(cbt_doc.get("is_active", False))
+    open_at = _parse_iso_dt_minutes(cbt_doc.get("open_at", ""))
+    close_at = _parse_iso_dt_minutes(cbt_doc.get("close_at", ""))
+    now_str = _now_wat_iso_minutes()
+
+    if not is_active:
+        cbt_doc["is_open_now"] = False
+        cbt_doc["status_code"] = "deactivated"
+        cbt_doc["status_label"] = "Deactivated (Closed)"
+        return cbt_doc
+
+    if open_at and now_str < open_at:
+        cbt_doc["is_open_now"] = False
+        cbt_doc["status_code"] = "scheduled"
+        cbt_doc["status_label"] = f"Scheduled (Opens {open_at.replace('T', ' ')})"
+        return cbt_doc
+
+    if close_at and now_str > close_at:
+        cbt_doc["is_open_now"] = False
+        cbt_doc["status_code"] = "expired"
+        cbt_doc["status_label"] = f"Closed ({close_at.replace('T', ' ')})"
+        return cbt_doc
+
+    cbt_doc["is_open_now"] = True
+    cbt_doc["status_code"] = "open"
+    if close_at:
+        cbt_doc["status_label"] = f"OPEN NOW (Closes {close_at.replace('T', ' ')})"
+    else:
+        cbt_doc["status_label"] = "OPEN & LIVE"
+    return cbt_doc
+
+
+def parse_cbt_questions_spreadsheet(filename, file_bytes):
+    """
+    Parse an uploaded Excel (.xlsx) or CSV (.csv) file containing CBT questions.
+    Expected columns:
+      Question | Option A | Option B | Option C | Option D | Correct Answer (A/B/C/D or option text) | Marks (optional)
+    """
+    fname_lower = (filename or "").lower()
+    if not file_bytes:
+        return {"ok": False, "error": "The uploaded questions file is empty."}
+
+    try:
+        if fname_lower.endswith(".xlsx") or file_bytes[:2] == b"PK":
+            raw_rows = _parse_xlsx_bytes(file_bytes)
+        elif fname_lower.endswith(".csv") or fname_lower.endswith(".txt"):
+            raw_rows = _parse_csv_bytes(file_bytes)
+        else:
+            return {
+                "ok": False,
+                "error": "Unsupported file format. Please upload an Excel (.xlsx) or CSV (.csv) file.",
+            }
+    except Exception as exc:
+        return {"ok": False, "error": f"Could not read CBT questions file: {exc}"}
+
+    if not raw_rows:
+        return {"ok": False, "error": "No rows found in the uploaded CBT questions file."}
+
+    first_row_norm = [re.sub(r"[^a-z0-9]+", " ", str(c).lower()).strip() for c in raw_rows[0]]
+    header_keywords = {"question", "questions", "option a", "option b", "answer", "correct", "opt a"}
+    has_header = any(
+        any(kw in cell for kw in header_keywords)
+        for cell in first_row_norm
+        if cell
+    )
+
+    col_map = {
+        "question": 0,
+        "option_a": 1,
+        "option_b": 2,
+        "option_c": 3,
+        "option_d": 4,
+        "answer": 5,
+        "points": 6,
+    }
+    start_idx = 0
+
+    if has_header:
+        start_idx = 1
+        detected = {}
+        for idx, cell in enumerate(first_row_norm):
+            if not cell:
+                continue
+            if ("question" in cell or cell in ("q", "item", "stem", "prompt")) and "question" not in detected:
+                detected["question"] = idx
+            elif cell in ("a", "option a", "opt a", "choice a", "optiona", "option 1") and "option_a" not in detected:
+                detected["option_a"] = idx
+            elif cell in ("b", "option b", "opt b", "choice b", "optionb", "option 2") and "option_b" not in detected:
+                detected["option_b"] = idx
+            elif cell in ("c", "option c", "opt c", "choice c", "optionc", "option 3") and "option_c" not in detected:
+                detected["option_c"] = idx
+            elif cell in ("d", "option d", "opt d", "choice d", "optiond", "option 4") and "option_d" not in detected:
+                detected["option_d"] = idx
+            elif ("answer" in cell or "correct" in cell or "key" in cell or cell == "ans") and "answer" not in detected:
+                detected["answer"] = idx
+            elif ("mark" in cell or "point" in cell or "score" in cell or "weight" in cell) and "points" not in detected:
+                detected["points"] = idx
+
+        # Also handles files that start with an S/N column: S/N | Question | Option A | Option B | Option C | Option D | Answer
+        if "question" in detected and "option_a" not in detected and len(raw_rows[0]) >= 7:
+            q_col = detected["question"]
+            detected.setdefault("option_a", q_col + 1)
+            detected.setdefault("option_b", q_col + 2)
+            detected.setdefault("option_c", q_col + 3)
+            detected.setdefault("option_d", q_col + 4)
+            detected.setdefault("answer", q_col + 5)
+            detected.setdefault("points", q_col + 6)
+
+        if "question" in detected and "answer" in detected:
+            col_map.update(detected)
+
+    questions = []
+    for row in raw_rows[start_idx:]:
+        def _c(key):
+            pos = col_map.get(key, -1)
+            return str(row[pos]).strip() if 0 <= pos < len(row) else ""
+
+        q_text = _c("question")
+        opt_a = _c("option_a")
+        opt_b = _c("option_b")
+        opt_c = _c("option_c")
+        opt_d = _c("option_d")
+        raw_ans = _c("answer")
+        raw_pts = _c("points")
+
+        if not q_text or (not opt_a and not opt_b):
+            continue
+        if q_text.lower() in ("question", "questions", "s/n", "sn"):
+            continue
+
+        # Normalize correct answer to 'A', 'B', 'C', or 'D'
+        ans_clean = raw_ans.strip().upper()
+        ans_letter = ""
+        if ans_clean in ("A", "B", "C", "D"):
+            ans_letter = ans_clean
+        elif re.match(r"^(OPTION\s*)?([ABCD])\b", ans_clean):
+            ans_letter = re.match(r"^(OPTION\s*)?([ABCD])\b", ans_clean).group(2)
+        else:
+            # Match against the text of Option A, B, C, or D
+            for letter, opt_val in (("A", opt_a), ("B", opt_b), ("C", opt_c), ("D", opt_d)):
+                if opt_val and raw_ans.strip().lower() == opt_val.strip().lower():
+                    ans_letter = letter
+                    break
+
+        if ans_letter not in ("A", "B", "C", "D"):
+            ans_letter = "A"
+
+        try:
+            pts = float(raw_pts) if raw_pts else 1.0
+            if pts <= 0:
+                pts = 1.0
+            pts = int(pts) if pts.is_integer() else round(pts, 2)
+        except (ValueError, TypeError):
+            pts = 1
+
+        questions.append(
+            {
+                "q_no": len(questions) + 1,
+                "question": q_text,
+                "option_a": opt_a,
+                "option_b": opt_b,
+                "option_c": opt_c,
+                "option_d": opt_d,
+                "answer": ans_letter,
+                "points": pts,
+            }
+        )
+
+    if not questions:
+        return {
+            "ok": False,
+            "error": (
+                "No valid CBT questions found. Ensure your Excel/CSV has columns: "
+                "Question, Option A, Option B, Option C, Option D, Correct Answer (A/B/C/D)."
+            ),
+        }
+
+    return {"ok": True, "questions": questions}
+
+
+def generate_sample_cbt_xlsx_bytes():
+    """Generate a clean sample .xlsx template for uploading CBT Questions."""
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        "</Types>"
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        "</Relationships>"
+    )
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="CBT Questions" sheetId="1" r:id="rId1"/></sheets>'
+        "</workbook>"
+    )
+    workbook_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        "</Relationships>"
+    )
+    sample_rows = [
+        ["Question", "Option A", "Option B", "Option C", "Option D", "Correct Answer", "Marks"],
+        [
+            "Which of the following is an example of system software?",
+            "Microsoft Word",
+            "Windows Operating System",
+            "Adobe Photoshop",
+            "Google Chrome",
+            "B",
+            "1",
+        ],
+        [
+            "What is the shortcut key to copy selected text in MS Word?",
+            "Ctrl + V",
+            "Ctrl + X",
+            "Ctrl + C",
+            "Ctrl + Z",
+            "C",
+            "1",
+        ],
+        [
+            "In a spreadsheet (MS Excel), every formula must begin with which symbol?",
+            "#",
+            "@",
+            "=",
+            "&",
+            "C",
+            "1",
+        ],
+    ]
+
+    def _xml_escape(s):
+        return (
+            str(s)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
+
+    sheet_rows_xml = []
+    cols = ["A", "B", "C", "D", "E", "F", "G"]
+    for r_idx, row in enumerate(sample_rows, start=1):
+        cells_xml = []
+        for c_idx, val in enumerate(row):
+            ref = f"{cols[c_idx]}{r_idx}"
+            cells_xml.append(
+                f'<c r="{ref}" t="inlineStr"><is><t>{_xml_escape(val)}</t></is></c>'
+            )
+        sheet_rows_xml.append(f'<row r="{r_idx}">{"".join(cells_xml)}</row>')
+
+    sheet1 = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<sheetData>{"".join(sheet_rows_xml)}</sheetData>'
+        "</worksheet>"
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("_rels/.rels", rels)
+        zf.writestr("xl/workbook.xml", workbook)
+        zf.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        zf.writestr("xl/worksheets/sheet1.xml", sheet1)
+    return buf.getvalue()
+
+
+def list_all_cbt_tests():
+    """Fetch all documents from the 'cbt_tests' collection in Firestore."""
+    url = f"{FIRESTORE_BASE_URL}/cbt_tests?pageSize=200"
+    try:
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return []
+        docs = resp.json().get("documents", [])
+        tests = [_from_firestore_doc(d) for d in docs if d]
+        result = [compute_cbt_status(t) for t in tests if t is not None]
+        result.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return result
+    except Exception:
+        return []
+
+
+def get_cbt_tests_by_class(class_id):
+    if not class_id:
+        return []
+    tests = [t for t in list_all_cbt_tests() if t.get("class_id") == class_id]
+    for t in tests:
+        if not isinstance(t.get("questions"), list):
+            t["questions"] = []
+        if not isinstance(t.get("submissions"), dict):
+            t["submissions"] = {}
+    return tests
+
+
+def get_cbt_test_by_id(cbt_id):
+    if not cbt_id:
+        return None
+    url = f"{FIRESTORE_BASE_URL}/cbt_tests/{cbt_id}"
+    try:
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            doc = _from_firestore_doc(resp.json())
+            if doc:
+                if not isinstance(doc.get("questions"), list):
+                    doc["questions"] = []
+                if not isinstance(doc.get("submissions"), dict):
+                    doc["submissions"] = {}
+                compute_cbt_status(doc)
+            return doc
+        return None
+    except Exception:
+        return None
+
+
+def create_cbt_test(
+    class_id,
+    lecturer_id,
+    title,
+    duration_minutes=20,
+    total_marks=20,
+    questions=None,
+    is_active=False,
+    open_at="",
+    close_at="",
+    instructions="",
+    show_result_immediately=True,
+    sync_to_gradebook=True,
+):
+    """
+    Create a new CBT Test for a course in Firestore, optionally linking it to a
+    `Test` column in `class_assessments` so student CBT scores automatically record into the Gradebook.
+    """
+    title_clean = (title or "").strip()
+    if not title_clean:
+        return {"ok": False, "error": "Please enter a title for the CBT Test."}
+
+    q_list = questions if isinstance(questions, list) else []
+    if not q_list:
+        return {"ok": False, "error": "Please upload an Excel (.xlsx) or CSV (.csv) file with CBT questions."}
+
+    try:
+        dur_int = max(1, min(300, int(duration_minutes or 20)))
+    except (ValueError, TypeError):
+        dur_int = 20
+
+    try:
+        marks_val = float(total_marks or len(q_list))
+        if marks_val <= 0:
+            marks_val = float(len(q_list))
+        marks_val = int(marks_val) if marks_val.is_integer() else round(marks_val, 2)
+    except (ValueError, TypeError):
+        marks_val = len(q_list)
+
+    linked_assessment_id = ""
+    if sync_to_gradebook:
+        assess_res = create_class_assessment(
+            class_id=class_id,
+            lecturer_id=lecturer_id,
+            title=f"CBT: {title_clean}",
+            category="Test",
+            max_score=marks_val,
+            description=f"Auto-synced CBT Test ({len(q_list)} questions, {dur_int} mins)",
+        )
+        if assess_res.get("ok") and assess_res.get("assessment"):
+            linked_assessment_id = assess_res["assessment"].get("id", "")
+
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    cbt_doc = {
+        "class_id": class_id,
+        "lecturer_id": lecturer_id,
+        "title": title_clean,
+        "instructions": (instructions or "").strip(),
+        "duration_minutes": dur_int,
+        "total_marks": marks_val,
+        "questions": q_list,
+        "question_count": len(q_list),
+        "is_active": bool(is_active),
+        "open_at": _parse_iso_dt_minutes(open_at),
+        "close_at": _parse_iso_dt_minutes(close_at),
+        "show_result_immediately": bool(show_result_immediately),
+        "linked_assessment_id": linked_assessment_id,
+        "submissions": {},
+        "active_sessions": {},
+        "created_at": now_iso,
+    }
+
+    fields = {k: _to_firestore_value(v) for k, v in cbt_doc.items()}
+    url = f"{FIRESTORE_BASE_URL}/cbt_tests"
+
+    try:
+        resp = requests.post(url, json={"fields": fields}, timeout=12)
+        if resp.status_code in (200, 201):
+            created = compute_cbt_status(_from_firestore_doc(resp.json()))
+            return {"ok": True, "cbt_test": created}
+        return {"ok": False, "error": f"Firestore error ({resp.status_code}): {resp.text}"}
+    except Exception as exc:
+        return {"ok": False, "error": f"Failed to create CBT Test: {exc}"}
+
+
+def update_cbt_test_fields(cbt_id, updates):
+    """Patch specific fields on a Firestore `cbt_tests` document."""
+    if not cbt_id or not updates:
+        return {"ok": False, "error": "Invalid CBT update parameters."}
+
+    mask_params = "&".join([f"updateMask.fieldPaths={k}" for k in updates.keys()])
+    url = f"{FIRESTORE_BASE_URL}/cbt_tests/{cbt_id}?{mask_params}"
+    fields = {k: _to_firestore_value(v) for k, v in updates.items()}
+
+    try:
+        resp = requests.patch(url, json={"fields": fields}, timeout=12)
+        if resp.status_code == 200:
+            return {"ok": True, "cbt_test": compute_cbt_status(_from_firestore_doc(resp.json()))}
+        return {"ok": False, "error": f"Failed to update CBT Test ({resp.status_code})."}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def delete_cbt_test(cbt_id):
+    if not cbt_id:
+        return {"ok": False, "error": "Missing CBT Test ID."}
+    cbt = get_cbt_test_by_id(cbt_id)
+    url = f"{FIRESTORE_BASE_URL}/cbt_tests/{cbt_id}"
+    try:
+        resp = requests.delete(url, timeout=10)
+        if resp.status_code in (200, 204):
+            if cbt and cbt.get("linked_assessment_id"):
+                delete_class_assessment(cbt["linked_assessment_id"])
+            return {"ok": True}
+        return {"ok": False, "error": f"Failed to delete CBT Test ({resp.status_code})."}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def submit_cbt_student_attempt(cbt_id, student, submitted_answers):
+    """
+    Auto-grade a student's CBT test answers, save their submission atomically to
+    `cbt_tests/{cbt_id}` (`submissions.<student_id>`), and sync the score to the linked
+    `class_assessments` gradebook column if present.
+    """
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cbt:
+        return {"ok": False, "error": "CBT Test not found."}
+
+    student_id = student.get("id", "")
+    if not student_id:
+        return {"ok": False, "error": "Invalid student record."}
+
+    existing_subs = cbt.get("submissions") or {}
+    if student_id in existing_subs:
+        return {
+            "ok": False,
+            "already_submitted": True,
+            "submission": existing_subs[student_id],
+            "error": "You have already submitted this CBT test.",
+        }
+
+    questions = cbt.get("questions") or []
+    raw_earned = 0.0
+    raw_possible = 0.0
+    correct_count = 0
+
+    for idx, q in enumerate(questions, start=1):
+        pts = float(q.get("points") or 1.0)
+        raw_possible += pts
+        correct_ans = str(q.get("answer") or "A").strip().upper()
+        chosen = str(submitted_answers.get(str(q.get("q_no") or idx)) or "").strip().upper()
+        if chosen and chosen == correct_ans:
+            raw_earned += pts
+            correct_count += 1
+
+    total_marks = float(cbt.get("total_marks") or raw_possible or len(questions) or 1)
+    if raw_possible > 0:
+        scaled_score = (raw_earned / raw_possible) * total_marks
+    else:
+        scaled_score = 0.0
+
+    scaled_score = int(scaled_score) if scaled_score.is_integer() else round(scaled_score, 2)
+    pct = round((raw_earned / raw_possible) * 100, 1) if raw_possible > 0 else 0.0
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    submission_record = {
+        "student_id": student_id,
+        "full_name": student.get("full_name", ""),
+        "gts_number": student.get("gts_number", ""),
+        "matric_number": student.get("matric_number", ""),
+        "correct_count": correct_count,
+        "total_questions": len(questions),
+        "score": scaled_score,
+        "max_score": int(total_marks) if total_marks.is_integer() else round(total_marks, 2),
+        "percentage": pct,
+        "submitted_at": now_iso,
+    }
+
+    # Atomic field-path update for this student's submission
+    field_path = f"submissions.{student_id}"
+    url = f"{FIRESTORE_BASE_URL}/cbt_tests/{cbt_id}?updateMask.fieldPaths={field_path}"
+    body = {
+        "fields": {
+            "submissions": {
+                "mapValue": {
+                    "fields": {
+                        student_id: _to_firestore_value(submission_record)
+                    }
+                }
+            }
+        }
+    }
+
+    try:
+        resp = requests.patch(url, json=body, timeout=12)
+        if resp.status_code != 200:
+            # Fallback to updating full submissions map
+            existing_subs[student_id] = submission_record
+            update_cbt_test_fields(cbt_id, {"submissions": existing_subs})
+    except Exception as exc:
+        return {"ok": False, "error": f"Failed to record CBT submission: {exc}"}
+
+    # Sync score to linked Course Gradebook column (`class_assessments`) if configured
+    linked_aid = cbt.get("linked_assessment_id", "")
+    if linked_aid:
+        score_path = f"scores.{student_id}"
+        score_url = f"{FIRESTORE_BASE_URL}/class_assessments/{linked_aid}?updateMask.fieldPaths={score_path}"
+        score_body = {
+            "fields": {
+                "scores": {
+                    "mapValue": {
+                        "fields": {
+                            student_id: _to_firestore_value(scaled_score)
+                        }
+                    }
+                }
+            }
+        }
+        try:
+            s_resp = requests.patch(score_url, json=score_body, timeout=10)
+            if s_resp.status_code != 200:
+                save_assessment_scores(linked_aid, {student_id: scaled_score})
+        except Exception:
+            pass
+
+    return {"ok": True, "submission": submission_record}
+
+
+def reset_cbt_student_attempt(cbt_id, student_id):
+    """Allow lecturer to reset a student's CBT attempt so they can retake the test."""
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cbt or not student_id:
+        return {"ok": False, "error": "CBT Test or student not found."}
+
+    subs = dict(cbt.get("submissions") or {})
+    if student_id in subs:
+        del subs[student_id]
+
+    res = update_cbt_test_fields(cbt_id, {"submissions": subs})
+    if res.get("ok") and cbt.get("linked_assessment_id"):
+        save_assessment_scores(cbt["linked_assessment_id"], {student_id: ""})
+    return res
+
 
 
 

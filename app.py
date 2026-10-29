@@ -18,10 +18,13 @@ from firebase_service import (
     authenticate_user,
     bulk_upsert_students,
     clear_class_students,
+    compute_cbt_status,
+    create_cbt_test,
     create_class_assessment,
     create_class_page,
     create_lecture_session,
     create_user,
+    delete_cbt_test,
     delete_class_assessment,
     delete_class_page,
     delete_lecture_session,
@@ -30,10 +33,13 @@ from firebase_service import (
     enrich_students_with_assessments,
     ensure_default_admin,
     find_duplicate_student_in_class,
+    generate_sample_cbt_xlsx_bytes,
     generate_sample_xlsx_bytes,
     get_all_lecturers,
     get_assessment_by_id,
     get_assessments_by_class,
+    get_cbt_test_by_id,
+    get_cbt_tests_by_class,
     get_class_by_code,
     get_class_by_id,
     get_classes_by_lecturer,
@@ -44,11 +50,15 @@ from firebase_service import (
     get_students_by_class,
     get_user_by_id,
     list_all_classes,
+    parse_cbt_questions_spreadsheet,
     parse_scores_spreadsheet,
     parse_students_spreadsheet,
+    reset_cbt_student_attempt,
     save_assessment_scores,
     student_self_register_in_class,
     student_self_update_matric,
+    submit_cbt_student_attempt,
+    update_cbt_test_fields,
     update_class_fields,
     update_student_fields,
     update_user_fields,
@@ -387,6 +397,7 @@ def view_class_page(class_id):
     sessions = get_sessions_by_class(class_id)
     students = get_students_by_class(class_id)
     assessments = get_assessments_by_class(class_id)
+    cbt_tests = get_cbt_tests_by_class(class_id)
     gradebook_totals = enrich_students_with_assessments(students, assessments)
 
     selected_assessment_id = request.args.get("assessment_id", "").strip()
@@ -398,6 +409,16 @@ def view_class_page(class_id):
                 break
         if not selected_assessment:
             selected_assessment = assessments[-1]
+
+    selected_cbt_id = request.args.get("cbt_id", "").strip()
+    selected_cbt = None
+    if cbt_tests:
+        for ct in cbt_tests:
+            if ct.get("id") == selected_cbt_id:
+                selected_cbt = ct
+                break
+        if not selected_cbt:
+            selected_cbt = cbt_tests[0]
 
     matric_completed = sum(1 for s in students if s.get("has_valid_matric"))
     matric_pending = len(students) - matric_completed
@@ -411,6 +432,8 @@ def view_class_page(class_id):
         students=students,
         assessments=assessments,
         selected_assessment=selected_assessment,
+        cbt_tests=cbt_tests,
+        selected_cbt=selected_cbt,
         gradebook_totals=gradebook_totals,
         matric_completed=matric_completed,
         matric_pending=matric_pending,
@@ -437,6 +460,7 @@ def public_class_page(class_code):
     sessions = get_sessions_by_class(cls["id"])
     students = get_students_by_class(cls["id"])
     assessments = get_assessments_by_class(cls["id"])
+    cbt_tests = get_cbt_tests_by_class(cls["id"])
     gradebook_totals = enrich_students_with_assessments(students, assessments)
 
     selected_assessment_id = request.args.get("assessment_id", "").strip()
@@ -448,6 +472,16 @@ def public_class_page(class_code):
                 break
         if not selected_assessment:
             selected_assessment = assessments[-1]
+
+    selected_cbt_id = request.args.get("cbt_id", "").strip()
+    selected_cbt = None
+    if cbt_tests:
+        for ct in cbt_tests:
+            if ct.get("id") == selected_cbt_id:
+                selected_cbt = ct
+                break
+        if not selected_cbt:
+            selected_cbt = cbt_tests[0]
 
     matric_completed = sum(1 for s in students if s.get("has_valid_matric"))
     matric_pending = len(students) - matric_completed
@@ -477,6 +511,8 @@ def public_class_page(class_code):
         students=students,
         assessments=assessments,
         selected_assessment=selected_assessment,
+        cbt_tests=cbt_tests,
+        selected_cbt=selected_cbt,
         gradebook_totals=gradebook_totals,
         matric_completed=matric_completed,
         matric_pending=matric_pending,
@@ -1210,6 +1246,426 @@ def lecturer_change_password():
         flash(res["error"], "danger")
 
     return redirect(url_for("lecturer_dashboard"))
+
+
+# ==========================================
+# CBT (COMPUTER-BASED TEST) ROUTES (STEP 5)
+# ==========================================
+@app.route("/lecturer/cbt/template.<ext>")
+@login_required
+def download_cbt_template(ext):
+    """Download a sample Excel (.xlsx) or CSV (.csv) template for CBT Questions."""
+    if ext.lower() == "xlsx":
+        xlsx_bytes = generate_sample_cbt_xlsx_bytes()
+        return Response(
+            xlsx_bytes,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=cbt_questions_template.xlsx"},
+        )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Question", "Option A", "Option B", "Option C", "Option D", "Correct Answer", "Marks"])
+    writer.writerow([
+        "Which of the following is an example of system software?",
+        "Microsoft Word",
+        "Windows Operating System",
+        "Adobe Photoshop",
+        "Google Chrome",
+        "B",
+        "1",
+    ])
+    writer.writerow([
+        "What is the shortcut key to copy selected text in MS Word?",
+        "Ctrl + V",
+        "Ctrl + X",
+        "Ctrl + C",
+        "Ctrl + Z",
+        "C",
+        "1",
+    ])
+    writer.writerow([
+        "In MS Excel, every formula must begin with which symbol?",
+        "#",
+        "@",
+        "=",
+        "&",
+        "C",
+        "1",
+    ])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cbt_questions_template.csv"},
+    )
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/create", methods=["POST"])
+@login_required
+def create_class_cbt(class_id):
+    cls = get_class_by_id(class_id)
+    if not cls:
+        flash("Class page not found.", "danger")
+        return redirect(url_for("index"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Only the assigned lecturer can create CBT tests for this course.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    title = request.form.get("title", "").strip()
+    duration_minutes = request.form.get("duration_minutes", "20").strip()
+    total_marks = request.form.get("total_marks", "20").strip()
+    instructions = request.form.get("instructions", "").strip()
+    open_at = request.form.get("open_at", "").strip()
+    close_at = request.form.get("close_at", "").strip()
+    is_active = request.form.get("is_active") == "true"
+    show_result_immediately = request.form.get("show_result_immediately", "true") == "true"
+
+    uploaded_file = request.files.get("questions_file")
+    if not uploaded_file or not uploaded_file.filename:
+        flash("Please select an Excel (.xlsx) or CSV (.csv) file containing CBT questions.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    parsed = parse_cbt_questions_spreadsheet(uploaded_file.filename, uploaded_file.read())
+    if not parsed["ok"]:
+        flash(parsed["error"], "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    res = create_cbt_test(
+        class_id=class_id,
+        lecturer_id=cls.get("lecturer_id", ""),
+        title=title,
+        duration_minutes=duration_minutes,
+        total_marks=total_marks,
+        questions=parsed["questions"],
+        is_active=is_active,
+        open_at=open_at,
+        close_at=close_at,
+        instructions=instructions,
+        show_result_immediately=show_result_immediately,
+        sync_to_gradebook=True,
+    )
+
+    if res["ok"]:
+        cbt = res["cbt_test"]
+        flash(
+            f"CBT Test '{cbt.get('title')}' created with {cbt.get('question_count')} questions ({cbt.get('total_marks')} marks)!",
+            "success",
+        )
+        return redirect(
+            url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt.get("id"))
+        )
+    else:
+        flash(res["error"], "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/<cbt_id>/toggle", methods=["POST"])
+@login_required
+def toggle_class_cbt(class_id, cbt_id):
+    cls = get_class_by_id(class_id)
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cls or not cbt:
+        flash("CBT Test not found.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Unauthorized action.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    new_state = not bool(cbt.get("is_active", False))
+    res = update_cbt_test_fields(cbt_id, {"is_active": new_state})
+    if res["ok"]:
+        state_str = "ACTIVATED (OPEN)" if new_state else "DEACTIVATED (CLOSED)"
+        flash(
+            f"CBT Test '{cbt.get('title')}' has been {state_str}.",
+            "success" if new_state else "warning",
+        )
+    else:
+        flash(res["error"], "danger")
+
+    return redirect(url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt_id))
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/<cbt_id>/schedule", methods=["POST"])
+@login_required
+def update_class_cbt_schedule(class_id, cbt_id):
+    cls = get_class_by_id(class_id)
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cls or not cbt:
+        flash("CBT Test not found.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Unauthorized action.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    open_at = request.form.get("open_at", "").strip()
+    close_at = request.form.get("close_at", "").strip()
+    duration_raw = request.form.get("duration_minutes", str(cbt.get("duration_minutes", 20))).strip()
+    is_active = request.form.get("is_active") == "true"
+    show_result_immediately = request.form.get("show_result_immediately") == "true"
+
+    try:
+        dur_int = max(1, min(300, int(duration_raw)))
+    except (ValueError, TypeError):
+        dur_int = cbt.get("duration_minutes", 20)
+
+    res = update_cbt_test_fields(
+        cbt_id,
+        {
+            "open_at": open_at[:16].replace(" ", "T") if open_at else "",
+            "close_at": close_at[:16].replace(" ", "T") if close_at else "",
+            "duration_minutes": dur_int,
+            "is_active": is_active,
+            "show_result_immediately": show_result_immediately,
+        },
+    )
+    if res["ok"]:
+        flash(f"Updated schedule and settings for '{cbt.get('title')}'.", "success")
+    else:
+        flash(res["error"], "danger")
+
+    return redirect(url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt_id))
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/<cbt_id>/questions/upload", methods=["POST"])
+@login_required
+def upload_class_cbt_questions(class_id, cbt_id):
+    """Replace or append CBT questions from an Excel (.xlsx) or CSV (.csv) file."""
+    cls = get_class_by_id(class_id)
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cls or not cbt:
+        flash("CBT Test not found.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Unauthorized action.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    uploaded_file = request.files.get("questions_file")
+    if not uploaded_file or not uploaded_file.filename:
+        flash("Please select an Excel (.xlsx) or CSV (.csv) file to upload.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt_id))
+
+    parsed = parse_cbt_questions_spreadsheet(uploaded_file.filename, uploaded_file.read())
+    if not parsed["ok"]:
+        flash(parsed["error"], "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt_id))
+
+    mode = request.form.get("upload_mode", "replace")
+    if mode == "append":
+        combined = list(cbt.get("questions") or []) + parsed["questions"]
+        for idx, q in enumerate(combined, start=1):
+            q["q_no"] = idx
+        new_questions = combined
+    else:
+        new_questions = parsed["questions"]
+
+    res = update_cbt_test_fields(
+        cbt_id,
+        {
+            "questions": new_questions,
+            "question_count": len(new_questions),
+        },
+    )
+    if res["ok"]:
+        flash(
+            f"Updated questions for '{cbt.get('title')}' (Total: {len(new_questions)} questions)!",
+            "success",
+        )
+    else:
+        flash(res["error"], "danger")
+
+    return redirect(url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt_id))
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/<cbt_id>/reset-attempt", methods=["POST"])
+@login_required
+def reset_cbt_attempt_route(class_id, cbt_id):
+    cls = get_class_by_id(class_id)
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cls or not cbt:
+        flash("CBT Test not found.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Unauthorized action.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    student_id = request.form.get("student_id", "").strip()
+    res = reset_cbt_student_attempt(cbt_id, student_id)
+    if res["ok"]:
+        flash("Student's CBT attempt has been reset. They can now retake the test.", "info")
+    else:
+        flash(res["error"], "danger")
+
+    return redirect(url_for("view_class_page", class_id=class_id, tab="cbt", cbt_id=cbt_id))
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/<cbt_id>/delete", methods=["POST"])
+@login_required
+def delete_class_cbt_route(class_id, cbt_id):
+    cls = get_class_by_id(class_id)
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cls or not cbt:
+        flash("CBT Test not found.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Unauthorized action.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    res = delete_cbt_test(cbt_id)
+    if res["ok"]:
+        flash(f"Deleted CBT Test '{cbt.get('title')}'.", "info")
+    else:
+        flash(res["error"], "danger")
+
+    return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+
+@app.route("/lecturer/classes/<class_id>/cbt/<cbt_id>/export.csv")
+@login_required
+def export_cbt_results_csv(class_id, cbt_id):
+    cls = get_class_by_id(class_id)
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cls or not cbt:
+        flash("CBT Test not found.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id, tab="cbt"))
+
+    students = get_students_by_class(class_id)
+    subs = cbt.get("submissions") or {}
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "S/N",
+        "Full Name",
+        "Matric Number",
+        "GTS Number",
+        "Phone Number",
+        "Status",
+        "Correct Answers",
+        "Total Questions",
+        f"Score (/ {cbt.get('total_marks')})",
+        "Percentage (%)",
+        "Submitted At",
+    ])
+
+    for idx, st in enumerate(students, start=1):
+        sub = subs.get(st.get("id", ""))
+        if sub:
+            writer.writerow([
+                idx,
+                st.get("full_name", ""),
+                st.get("matric_number", ""),
+                st.get("gts_number", ""),
+                st.get("phone_number", ""),
+                "Submitted",
+                sub.get("correct_count", 0),
+                sub.get("total_questions", cbt.get("question_count", 0)),
+                sub.get("score", 0),
+                sub.get("percentage", 0),
+                sub.get("submitted_at", ""),
+            ])
+        else:
+            writer.writerow([
+                idx,
+                st.get("full_name", ""),
+                st.get("matric_number", ""),
+                st.get("gts_number", ""),
+                st.get("phone_number", ""),
+                "Not Taken",
+                "",
+                cbt.get("question_count", 0),
+                "",
+                "",
+                "",
+            ])
+
+    safe_title = "".join(ch if ch.isalnum() else "_" for ch in (cbt.get("title") or "cbt")).strip("_")
+    filename = f"{cls.get('course_code', 'course')}_{safe_title}_results.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/class/<class_code>/cbt/<cbt_id>", methods=["GET", "POST"])
+def student_cbt_portal(class_code, cbt_id):
+    """
+    Student CBT Test Portal:
+    - Step 1 (GET or POST action='verify'): Verify student enrollment on the class roster & check if test is open.
+    - Step 2 (POST action='submit'): Auto-grade answers, save to Firestore + Gradebook, and display result receipt.
+    """
+    cls = get_class_by_code(class_code) or get_class_by_id(class_code)
+    if not cls:
+        flash("Class page not found.", "danger")
+        return redirect(url_for("index"))
+
+    cbt = get_cbt_test_by_id(cbt_id)
+    if not cbt or cbt.get("class_id") != cls.get("id"):
+        flash("CBT Test not found for this course.", "danger")
+        return redirect(url_for("public_class_page", class_code=cls["class_code"], tab="cbt"))
+
+    compute_cbt_status(cbt)
+    action = request.form.get("action", "") if request.method == "POST" else ""
+    verified_student = None
+    existing_submission = None
+
+    if request.method == "POST" and action == "verify":
+        identifier = request.form.get("identifier", "").strip()
+        matches = verify_student_in_class(cls["id"], identifier)
+        if not matches:
+            flash(
+                f"No student matching '{identifier}' was found on the {cls.get('course_code')} class list. Only enrolled students can take this CBT test.",
+                "danger",
+            )
+        else:
+            verified_student = matches[0]
+            subs = cbt.get("submissions") or {}
+            if verified_student.get("id") in subs:
+                existing_submission = subs[verified_student["id"]]
+            elif not cbt.get("is_open_now"):
+                flash(
+                    f"This CBT test is currently not open for new attempts ({cbt.get('status_label')}).",
+                    "warning",
+                )
+                verified_student = None
+
+    elif request.method == "POST" and action == "submit":
+        student_id = request.form.get("student_id", "").strip()
+        verified_student = get_student_by_id(student_id)
+        if not verified_student or verified_student.get("class_id") != cls.get("id"):
+            flash("Invalid student session. Please verify your GTS or Matric Number again.", "danger")
+            return redirect(url_for("student_cbt_portal", class_code=cls["class_code"], cbt_id=cbt_id))
+
+        # Collect submitted answers: q_1, q_2, ...
+        submitted_answers = {}
+        for key, val in request.form.items():
+            if key.startswith("q_"):
+                q_no = key[2:]
+                submitted_answers[q_no] = val.strip().upper()
+
+        res = submit_cbt_student_attempt(cbt_id, verified_student, submitted_answers)
+        if res.get("ok"):
+            existing_submission = res["submission"]
+            flash("Your CBT test has been submitted and graded successfully!", "success")
+        elif res.get("already_submitted"):
+            existing_submission = res["submission"]
+            flash("You have already submitted this CBT test.", "info")
+        else:
+            flash(res.get("error", "Could not submit CBT test."), "danger")
+
+    return render_template(
+        "cbt_exam.html",
+        class_page=cls,
+        cbt=cbt,
+        verified_student=verified_student,
+        existing_submission=existing_submission,
+    )
 
 
 if __name__ == "__main__":
