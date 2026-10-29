@@ -69,6 +69,24 @@
     </div>
   </div>
 
+  <!-- Firebase Free-Tier Daily Activity Summary Bar -->
+  {% if firebase_usage %}
+    <div class="bg-white rounded-2xl border {{ 'border-rose-300' if firebase_usage.status == 'critical' else ('border-amber-300' if firebase_usage.status == 'warning' else 'border-slate-200') }} shadow-sm px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full {{ 'bg-rose-500 animate-ping' if firebase_usage.status == 'critical' else ('bg-amber-500 animate-pulse' if firebase_usage.status == 'warning' else 'bg-emerald-500') }}"></span>
+        <span class="font-bold text-slate-800">Firebase Free-Tier Daily Activity ({{ firebase_usage.date_utc }}):</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-4 font-mono">
+        <span>Reads: <strong class="text-indigo-700">{{ firebase_usage.reads }}</strong> / 50,000 ({{ firebase_usage.reads_pct }}%)</span>
+        <span>Writes: <strong class="text-emerald-700">{{ firebase_usage.writes }}</strong> / 20,000 ({{ firebase_usage.writes_pct }}%)</span>
+        <span>Deletes: <strong class="text-amber-700">{{ firebase_usage.deletes }}</strong> / 20,000</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-sans font-semibold">
+          Cache Saved: +{{ firebase_usage.reads_saved_by_cache }} reads
+        </span>
+      </div>
+    </div>
+  {% endif %}
+
   <!-- Main Grid: Class Pages (Left/Main) + Lecturer Profile & Security (Right) -->
   <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 

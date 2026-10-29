@@ -31,7 +31,18 @@
         </div>
       </a>
 
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        {% if session.get('user_id') and firebase_usage %}
+          <!-- Live Firebase Free-Tier Daily Activity Pill -->
+          <div title="Firebase Spark Free Plan Daily Reads ({{ firebase_usage.reads }} / {{ firebase_usage.reads_limit }}) | Writes ({{ firebase_usage.writes }} / {{ firebase_usage.writes_limit }}) | Saved by Cache: {{ firebase_usage.reads_saved_by_cache }}"
+               class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-mono {{ 'bg-rose-950/90 border-rose-500 text-rose-200' if firebase_usage.status == 'critical' else ('bg-amber-950/90 border-amber-500 text-amber-200' if firebase_usage.status == 'warning' else 'bg-slate-800/90 border-slate-700 text-slate-300') }}">
+            <span class="w-2 h-2 rounded-full {{ 'bg-rose-400 animate-ping' if firebase_usage.status == 'critical' else ('bg-amber-400 animate-pulse' if firebase_usage.status == 'warning' else 'bg-emerald-400') }}"></span>
+            <span>Reads: <strong>{{ firebase_usage.reads }}</strong>/50k ({{ firebase_usage.reads_pct }}%)</span>
+            <span class="text-slate-600">|</span>
+            <span>Writes: <strong>{{ firebase_usage.writes }}</strong>/20k</span>
+          </div>
+        {% endif %}
+
         {% if session.get('user_id') %}
           <div class="hidden sm:flex items-center gap-3 bg-slate-800/90 px-3.5 py-1.5 rounded-lg border border-slate-700">
             <div class="text-right">
@@ -68,8 +79,25 @@
     </div>
   </header>
 
-  <!-- Flash Messages -->
-  <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+  <!-- Flash Messages & Firebase Free-Tier Quota Alert -->
+  <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
+    {% if firebase_usage and (firebase_usage.quota_exceeded or (session.get('user_id') and firebase_usage.status in ('warning', 'critical'))) %}
+      <div class="flex items-center justify-between px-4 py-3 rounded-xl border text-xs font-semibold shadow-sm {{ 'bg-rose-50 border-rose-300 text-rose-900' if firebase_usage.status == 'critical' else 'bg-amber-50 border-amber-300 text-amber-900' }}">
+        <div class="flex items-center gap-2.5">
+          <svg class="w-5 h-5 shrink-0 {{ 'text-rose-600' if firebase_usage.status == 'critical' else 'text-amber-600' }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            {% if firebase_usage.quota_exceeded %}
+              <strong>Firebase Free-Tier Daily Limit Reached:</strong> {{ firebase_usage.last_quota_error }} Quotas reset automatically at midnight UTC/Pacific.
+            {% else %}
+              <strong>Firebase Free-Tier Daily Activity Notice:</strong> You have used <strong>{{ firebase_usage.reads }} / 50,000</strong> daily reads ({{ firebase_usage.reads_pct }}%) and <strong>{{ firebase_usage.writes }} / 20,000</strong> daily writes ({{ firebase_usage.writes_pct }}%) today. (Smart cache has saved {{ firebase_usage.reads_saved_by_cache }} reads).
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="space-y-2">

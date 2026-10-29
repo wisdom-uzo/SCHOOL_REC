@@ -37,6 +37,7 @@ from firebase_service import (
     get_class_by_code,
     get_class_by_id,
     get_classes_by_lecturer,
+    get_firebase_usage_stats,
     get_session_by_id,
     get_sessions_by_class,
     get_student_by_id,
@@ -60,7 +61,10 @@ app.secret_key = SECRET_KEY
 
 @app.context_processor
 def inject_firebase_config():
-    return {"firebase_config": FIREBASE_CONFIG}
+    return {
+        "firebase_config": FIREBASE_CONFIG,
+        "firebase_usage": get_firebase_usage_stats(),
+    }
 
 
 def login_required(f):

@@ -81,6 +81,91 @@
     </div>
   </div>
 
+  <!-- Firebase Free-Tier (Spark Plan) Daily Activity & Quota Monitor -->
+  {% if firebase_usage %}
+    <div class="bg-white rounded-2xl border {{ 'border-rose-300' if firebase_usage.status == 'critical' else ('border-amber-300' if firebase_usage.status == 'warning' else 'border-slate-200') }} shadow-sm p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div class="flex items-center gap-2.5">
+          <span class="w-2.5 h-2.5 rounded-full {{ 'bg-rose-500 animate-ping' if firebase_usage.status == 'critical' else ('bg-amber-500 animate-pulse' if firebase_usage.status == 'warning' else 'bg-emerald-500') }}"></span>
+          <div>
+            <h2 class="text-sm font-bold text-slate-900">
+              Firebase Free-Tier (Spark Plan) Daily Activity Monitor
+            </h2>
+            <p class="text-[11px] text-slate-500">
+              Tracks daily Firestore operations against Google's free daily limits ({{ firebase_usage.date_utc }}) &bull; 45s Smart Cache Active
+            </p>
+          </div>
+        </div>
+
+        <span class="px-3 py-1 rounded-full text-xs font-bold uppercase {{ 'bg-rose-100 text-rose-800' if firebase_usage.status == 'critical' else ('bg-amber-100 text-amber-800' if firebase_usage.status == 'warning' else 'bg-emerald-100 text-emerald-800') }}">
+          {% if firebase_usage.quota_exceeded %}
+            Daily Quota Reached
+          {% elif firebase_usage.status == 'critical' %}
+            High Daily Usage (&gt;85%)
+          {% elif firebase_usage.status == 'warning' %}
+            Moderate Usage (&gt;65%)
+          {% else %}
+            Within Free Daily Limit
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-semibold text-slate-600">Daily Reads (Free: 50,000)</span>
+            <span class="font-mono font-bold text-slate-900">{{ firebase_usage.reads_pct }}%</span>
+          </div>
+          <p class="text-lg font-mono font-bold text-indigo-700">
+            {{ firebase_usage.reads }} <span class="text-xs font-normal text-slate-400">/ 50,000</span>
+          </p>
+          <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-2">
+            <div class="h-full {{ 'bg-rose-500' if firebase_usage.reads_pct >= 85 else ('bg-amber-500' if firebase_usage.reads_pct >= 65 else 'bg-indigo-600') }}"
+                 style="width: {{ [firebase_usage.reads_pct, 2] | max }}%"></div>
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-semibold text-slate-600">Daily Writes (Free: 20,000)</span>
+            <span class="font-mono font-bold text-slate-900">{{ firebase_usage.writes_pct }}%</span>
+          </div>
+          <p class="text-lg font-mono font-bold text-emerald-700">
+            {{ firebase_usage.writes }} <span class="text-xs font-normal text-slate-400">/ 20,000</span>
+          </p>
+          <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-2">
+            <div class="h-full {{ 'bg-rose-500' if firebase_usage.writes_pct >= 85 else ('bg-amber-500' if firebase_usage.writes_pct >= 65 else 'bg-emerald-600') }}"
+                 style="width: {{ [firebase_usage.writes_pct, 2] | max }}%"></div>
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-semibold text-slate-600">Daily Deletes (Free: 20,000)</span>
+            <span class="font-mono font-bold text-slate-900">{{ firebase_usage.deletes_pct }}%</span>
+          </div>
+          <p class="text-lg font-mono font-bold text-amber-700">
+            {{ firebase_usage.deletes }} <span class="text-xs font-normal text-slate-400">/ 20,000</span>
+          </p>
+          <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-2">
+            <div class="h-full bg-amber-500"
+                 style="width: {{ [firebase_usage.deletes_pct, 2] | max }}%"></div>
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+          <span class="font-semibold text-emerald-800 block mb-1">Reads Saved by Smart Cache</span>
+          <p class="text-lg font-mono font-bold text-emerald-700">
+            +{{ firebase_usage.reads_saved_by_cache }} <span class="text-xs font-normal text-emerald-600">saved today</span>
+          </p>
+          <p class="text-[11px] text-emerald-700 mt-1.5">
+            Prevents student searches &amp; refreshes from burning your 50k read quota.
+          </p>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
   <!-- Main Grid: Add Lecturer Form (Left) + Lecturers List (Right) -->
   <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 

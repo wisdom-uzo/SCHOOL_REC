@@ -4,9 +4,10 @@ import io
 import re
 import secrets
 import string
+import time
 import xml.etree.ElementTree as ET
 import zipfile
-import requests
+import requests as _raw_requests
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import FIREBASE_CONFIG
 
@@ -17,6 +18,162 @@ FIRESTORE_BASE_URL = (
     f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents"
 )
 AUTH_BASE_URL = "https://identitytoolkit.googleapis.com/v1"
+
+# ==========================================
+# FIREBASE FREE-TIER (SPARK) DAILY MONITOR & SMART CACHE
+# ==========================================
+SPARK_DAILY_READ_LIMIT = 50000
+SPARK_DAILY_WRITE_LIMIT = 20000
+SPARK_DAILY_DELETE_LIMIT = 20000
+_CACHE_TTL_SECONDS = 45.0
+
+_HTTP_GET_CACHE = {}
+_USAGE_STATE = {
+    "date_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    "reads": 0,
+    "writes": 0,
+    "deletes": 0,
+    "reads_saved_by_cache": 0,
+    "quota_exceeded": False,
+    "last_quota_error": "",
+}
+
+
+def _ensure_daily_usage_reset():
+    today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if _USAGE_STATE["date_utc"] != today_utc:
+        _USAGE_STATE["date_utc"] = today_utc
+        _USAGE_STATE["reads"] = 0
+        _USAGE_STATE["writes"] = 0
+        _USAGE_STATE["deletes"] = 0
+        _USAGE_STATE["reads_saved_by_cache"] = 0
+        _USAGE_STATE["quota_exceeded"] = False
+        _USAGE_STATE["last_quota_error"] = ""
+
+
+def _check_quota_response(resp):
+    if resp is not None and resp.status_code == 429:
+        _USAGE_STATE["quota_exceeded"] = True
+        _USAGE_STATE["last_quota_error"] = (
+            "Firebase Free Tier daily quota reached (HTTP 429 RESOURCE_EXHAUSTED)."
+        )
+
+
+class _FirestoreHTTPProxy:
+    """
+    Transparent wrapper around `requests` that:
+    1. Counts every Firestore Document Read, Write, and Delete against Firebase Spark Free Tier limits.
+    2. Detects HTTP 429 (RESOURCE_EXHAUSTED) if the daily free quota is ever exceeded.
+    3. Caches Firestore GET responses for 45 seconds (and immediately invalidates on any POST/PATCH/DELETE)
+       to save up to 95%+ of daily reads on repeated page views and student searches.
+    """
+
+    def get(self, url, *args, **kwargs):
+        _ensure_daily_usage_reset()
+        if url.startswith(FIRESTORE_BASE_URL):
+            now = time.time()
+            cached = _HTTP_GET_CACHE.get(url)
+            if cached and (now - cached["ts"]) < _CACHE_TTL_SECONDS:
+                _USAGE_STATE["reads_saved_by_cache"] += cached["doc_count"]
+                return cached["resp"]
+
+            resp = _raw_requests.get(url, *args, **kwargs)
+            _check_quota_response(resp)
+            doc_count = 1
+            if resp.status_code == 200:
+                try:
+                    payload = resp.json()
+                    if "documents" in payload:
+                        doc_count = max(1, len(payload.get("documents") or []))
+                except Exception:
+                    doc_count = 1
+                _HTTP_GET_CACHE[url] = {
+                    "ts": now,
+                    "resp": resp,
+                    "doc_count": doc_count,
+                }
+            _USAGE_STATE["reads"] += doc_count
+            return resp
+        return _raw_requests.get(url, *args, **kwargs)
+
+    def post(self, url, *args, **kwargs):
+        _ensure_daily_usage_reset()
+        if url.startswith(FIRESTORE_BASE_URL):
+            _HTTP_GET_CACHE.clear()
+            body = kwargs.get("json") or {}
+            if url.endswith(":commit") and isinstance(body.get("writes"), list):
+                for w in body["writes"]:
+                    if "delete" in w:
+                        _USAGE_STATE["deletes"] += 1
+                    else:
+                        _USAGE_STATE["writes"] += 1
+            else:
+                _USAGE_STATE["writes"] += 1
+            resp = _raw_requests.post(url, *args, **kwargs)
+            _check_quota_response(resp)
+            return resp
+        return _raw_requests.post(url, *args, **kwargs)
+
+    def patch(self, url, *args, **kwargs):
+        _ensure_daily_usage_reset()
+        if url.startswith(FIRESTORE_BASE_URL):
+            _HTTP_GET_CACHE.clear()
+            _USAGE_STATE["writes"] += 1
+            resp = _raw_requests.patch(url, *args, **kwargs)
+            _check_quota_response(resp)
+            return resp
+        return _raw_requests.patch(url, *args, **kwargs)
+
+    def delete(self, url, *args, **kwargs):
+        _ensure_daily_usage_reset()
+        if url.startswith(FIRESTORE_BASE_URL):
+            _HTTP_GET_CACHE.clear()
+            _USAGE_STATE["deletes"] += 1
+            resp = _raw_requests.delete(url, *args, **kwargs)
+            _check_quota_response(resp)
+            return resp
+        return _raw_requests.delete(url, *args, **kwargs)
+
+
+requests = _FirestoreHTTPProxy()
+
+
+def get_firebase_usage_stats():
+    """Return current day's Firebase Spark Free-Tier activity and quota percentages."""
+    _ensure_daily_usage_reset()
+    reads = _USAGE_STATE["reads"]
+    writes = _USAGE_STATE["writes"]
+    deletes = _USAGE_STATE["deletes"]
+    saved = _USAGE_STATE["reads_saved_by_cache"]
+
+    reads_pct = min(100.0, round((reads / SPARK_DAILY_READ_LIMIT) * 100, 2))
+    writes_pct = min(100.0, round((writes / SPARK_DAILY_WRITE_LIMIT) * 100, 2))
+    deletes_pct = min(100.0, round((deletes / SPARK_DAILY_DELETE_LIMIT) * 100, 2))
+    max_pct = max(reads_pct, writes_pct, deletes_pct)
+
+    if _USAGE_STATE["quota_exceeded"] or max_pct >= 85.0:
+        status = "critical"
+    elif max_pct >= 65.0:
+        status = "warning"
+    else:
+        status = "healthy"
+
+    return {
+        "date_utc": _USAGE_STATE["date_utc"],
+        "reads": reads,
+        "reads_limit": SPARK_DAILY_READ_LIMIT,
+        "reads_pct": reads_pct,
+        "writes": writes,
+        "writes_limit": SPARK_DAILY_WRITE_LIMIT,
+        "writes_pct": writes_pct,
+        "deletes": deletes,
+        "deletes_limit": SPARK_DAILY_DELETE_LIMIT,
+        "deletes_pct": deletes_pct,
+        "reads_saved_by_cache": saved,
+        "quota_exceeded": _USAGE_STATE["quota_exceeded"],
+        "last_quota_error": _USAGE_STATE["last_quota_error"],
+        "status": status,
+    }
 
 
 def _to_firestore_value(val):
