@@ -44,7 +44,7 @@
       </div>
 
       <!-- Login Form -->
-      <form method="POST" action="{{ url_for('login') }}" class="px-6 pb-6 pt-2 space-y-4">
+      <form method="POST" action="{{ url_for('login') }}" autocomplete="off" class="px-6 pb-6 pt-2 space-y-4">
         <input type="hidden" name="role" id="role-input" value="{{ selected_role or 'lecturer' }}" />
 
         <div>
@@ -56,6 +56,7 @@
                    id="identifier"
                    name="identifier"
                    required
+                   autocomplete="off"
                    placeholder="e.g. lecturer@schoolrec.edu or LEC-2026-001"
                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" />
           </div>
@@ -70,6 +71,7 @@
                    id="password"
                    name="password"
                    required
+                   autocomplete="new-password"
                    placeholder="Enter your password"
                    class="w-full px-3.5 py-2.5 pr-16 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" />
             <button type="button"
@@ -88,22 +90,11 @@
         </button>
       </form>
 
-      <!-- Admin Default Credentials Helper Box -->
-      <div id="admin-helper" class="hidden bg-amber-50/90 border-t border-amber-200 px-6 py-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-xs font-bold text-amber-900 uppercase tracking-wider">Default Admin Access</p>
-            <p class="text-xs text-amber-800 mt-1">
-              Email: <code class="font-mono font-semibold bg-amber-100 px-1 rounded">admin@schoolrec.edu</code> (or <code class="font-mono font-semibold bg-amber-100 px-1 rounded">ADM-001</code>)<br/>
-              Password: <code class="font-mono font-semibold bg-amber-100 px-1 rounded">Admin@123</code>
-            </p>
-          </div>
-          <button type="button"
-                  onclick="fillAdminDemo()"
-                  class="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition">
-            Auto-Fill
-          </button>
-        </div>
+      <!-- Admin Info Footer -->
+      <div id="admin-helper" class="hidden bg-slate-50 border-t border-slate-200 px-6 py-3.5 text-center">
+        <p class="text-xs text-slate-500">
+          Administrator access is restricted to authorized <span class="font-semibold text-slate-700">System Administrators</span>.
+        </p>
       </div>
 
       <!-- Lecturer Info Footer -->
@@ -136,7 +127,7 @@
       tabLecturer.className = "flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all";
       submitBtn.textContent = "Sign In as Administrator";
       submitBtn.className = "w-full py-3 px-4 rounded-xl text-white font-semibold text-sm bg-slate-900 hover:bg-slate-800 transition shadow-md";
-      identifierInput.placeholder = "admin@schoolrec.edu or ADM-001";
+      identifierInput.placeholder = "Enter Administrator Email or Staff ID";
       adminHelper.classList.remove('hidden');
       lecturerHelper.classList.add('hidden');
     } else {
@@ -160,12 +151,6 @@
       pwd.type = 'password';
       btn.textContent = 'Show';
     }
-  }
-
-  function fillAdminDemo() {
-    selectRole('admin');
-    document.getElementById('identifier').value = 'admin@schoolrec.edu';
-    document.getElementById('password').value = 'Admin@123';
   }
 
   // Initialize active tab on load
