@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard | School Lecture Record System{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Page Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider rounded-full bg-indigo-100 text-indigo-700">
+          Step 1 &bull; Admin Control Panel
+        </span>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-900 mt-1">Lecturer Management Portal</h1>
+      <p class="text-sm text-slate-500 mt-0.5">
+        Register new lecturers, assign Staff IDs &amp; departments, and manage their login access.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <a href="#add-lecturer-card"
+         onclick="document.getElementById('full_name').focus()"
+         class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-sm transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+        Add New Lecturer
+      </a>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Lecturers</p>
+        <p class="text-3xl font-bold text-slate-900 mt-1">{{ total_lecturers }}</p>
+      </div>
+      <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Active Accounts</p>
+        <p class="text-3xl font-bold text-emerald-600 mt-1">{{ active_lecturers }}</p>
+      </div>
+      <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Academic Departments</p>
+        <p class="text-3xl font-bold text-amber-600 mt-1">{{ departments_count }}</p>
+      </div>
+      <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Created Class Pages</p>
+        <p class="text-3xl font-bold text-indigo-600 mt-1">{{ total_classes or 0 }}</p>
+      </div>
+      <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Grid: Add Lecturer Form (Left) + Lecturers List (Right) -->
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- Add Lecturer Form -->
+    <div id="add-lecturer-card" class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold">Register New Lecturer</h2>
+          <p class="text-xs text-slate-400">Creates login credentials in Firebase</p>
+        </div>
+        <span class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-xs font-bold">+</span>
+      </div>
+
+      <form method="POST" action="{{ url_for('add_lecturer') }}" class="p-6 space-y-4">
+        <div>
+          <label for="full_name" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Lecturer Full Name *
+          </label>
+          <input type="text"
+                 id="full_name"
+                 name="full_name"
+                 required
+                 placeholder="e.g. Dr. Samuel Adeyemi"
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="staff_id" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Staff ID *
+            </label>
+            <input type="text"
+                   id="staff_id"
+                   name="staff_id"
+                   required
+                   value="{{ suggested_staff_id }}"
+                   class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div>
+            <label for="phone" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Phone Number
+            </label>
+            <input type="text"
+                   id="phone"
+                   name="phone"
+                   placeholder="+234 803 000 0000"
+                   class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+        </div>
+
+        <div>
+          <label for="email" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Official Email Address *
+          </label>
+          <input type="email"
+                 id="email"
+                 name="email"
+                 required
+                 placeholder="lecturer@schoolrec.edu"
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div>
+          <label for="department" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Academic Department *
+          </label>
+          <select id="department"
+                  name="department"
+                  required
+                  class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">-- Select Department --</option>
+            <option value="Computer Science">Computer Science</option>
+            <option value="Software Engineering">Software Engineering</option>
+            <option value="Information Technology">Information Technology</option>
+            <option value="Mathematics & Statistics">Mathematics &amp; Statistics</option>
+            <option value="Electrical & Electronics Engineering">Electrical &amp; Electronics Engineering</option>
+            <option value="Mechanical Engineering">Mechanical Engineering</option>
+            <option value="Physics & Applied Sciences">Physics &amp; Applied Sciences</option>
+            <option value="Business Administration">Business Administration</option>
+            <option value="Economics">Economics</option>
+            <option value="General Studies">General Studies</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="lec_password" class="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Initial Login Password *
+            </label>
+            <button type="button"
+                    onclick="generatePassword()"
+                    class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+              Generate Password
+            </button>
+          </div>
+          <div class="relative">
+            <input type="text"
+                   id="lec_password"
+                   name="password"
+                   required
+                   minlength="6"
+                   value="Lecturer@123"
+                   class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            Share this password with the lecturer. They can change it after signing in.
+          </p>
+        </div>
+
+        <button type="submit"
+                class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md transition flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+          Create Lecturer Account
+        </button>
+      </form>
+    </div>
+
+    <!-- Lecturers Directory Table -->
+    <div class="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Registered Lecturers Directory</h2>
+          <p class="text-xs text-slate-500">All lecturers synced with Firebase Firestore</p>
+        </div>
+
+        <div class="relative w-full sm:w-64">
+          <input type="text"
+                 id="lecturer-search"
+                 onkeyup="filterLecturers()"
+                 placeholder="Search name, ID, department..."
+                 class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+      </div>
+
+      {% if lecturers %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse" id="lecturers-table">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <th class="py-3.5 px-4">Lecturer</th>
+                <th class="py-3.5 px-4">Staff ID</th>
+                <th class="py-3.5 px-4">Department</th>
+                <th class="py-3.5 px-4">Classes</th>
+                <th class="py-3.5 px-4">Status</th>
+                <th class="py-3.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 text-sm">
+              {% for lec in lecturers %}
+                <tr class="hover:bg-slate-50/80 transition lecturer-row">
+                  <td class="py-3.5 px-4">
+                    <div class="font-semibold text-slate-900">{{ lec.full_name }}</div>
+                    <div class="text-xs text-slate-500">{{ lec.email }}</div>
+                    {% if lec.phone %}
+                      <div class="text-[11px] text-slate-400">{{ lec.phone }}</div>
+                    {% endif %}
+                  </td>
+
+                  <td class="py-3.5 px-4">
+                    <span class="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-mono text-xs font-semibold text-slate-800">
+                      {{ lec.staff_id }}
+                    </span>
+                  </td>
+
+                  <td class="py-3.5 px-4">
+                    <span class="text-xs font-medium text-slate-700">{{ lec.department }}</span>
+                  </td>
+
+                  <td class="py-3.5 px-4">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {{ class_counts.get(lec.id, 0) if class_counts else 0 }}
+                    </span>
+                  </td>
+
+                  <td class="py-3.5 px-4">
+                    {% if lec.status == 'active' %}
+                      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Active
+                      </span>
+                    {% else %}
+                      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                        Inactive
+                      </span>
+                    {% endif %}
+                  </td>
+
+                  <td class="py-3.5 px-4 text-right">
+                    <div class="inline-flex items-center justify-end gap-1.5">
+                      <!-- Toggle Active/Inactive -->
+                      <form method="POST" action="{{ url_for('toggle_lecturer_status', doc_id=lec.id) }}" class="inline">
+                        <button type="submit"
+                                title="{{ 'Deactivate Lecturer' if lec.status == 'active' else 'Activate Lecturer' }}"
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition {{ 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' if lec.status == 'active' else 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' }}">
+                          {{ 'Suspend' if lec.status == 'active' else 'Activate' }}
+                        </button>
+                      </form>
+
+                      <!-- Reset Password Modal Trigger -->
+                      <button type="button"
+                              onclick="openResetModal('{{ lec.id }}', '{{ lec.full_name | e }}')"
+                              class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition">
+                        Reset Pwd
+                      </button>
+
+                      <!-- Delete Lecturer -->
+                      <form method="POST"
+                            action="{{ url_for('remove_lecturer', doc_id=lec.id) }}"
+                            onsubmit="return confirm('Are you sure you want to remove {{ lec.full_name | e }}?');"
+                            class="inline">
+                        <button type="submit"
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition">
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-12 text-center">
+          <div class="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-slate-800">No Lecturers Registered Yet</h3>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+            Use the <span class="font-semibold text-indigo-600">Register New Lecturer</span> form on the left to create the first lecturer account.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- All Created Class Pages Across the School -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div>
+        <h2 class="text-base font-bold text-slate-900">Lecturer Class Pages Directory</h2>
+        <p class="text-xs text-slate-500">All course class pages created by lecturers across departments</p>
+      </div>
+      <span class="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+        {{ (all_classes | length) if all_classes else 0 }} Total Classes
+      </span>
+    </div>
+
+    {% if all_classes %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <th class="py-3.5 px-4">Course</th>
+              <th class="py-3.5 px-4">Class Code</th>
+              <th class="py-3.5 px-4">Lecturer</th>
+              <th class="py-3.5 px-4">Level &amp; Semester</th>
+              <th class="py-3.5 px-4">Schedule / Venue</th>
+              <th class="py-3.5 px-4 text-right">View</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 text-sm">
+            {% for cls in all_classes %}
+              <tr class="hover:bg-slate-50/80 transition">
+                <td class="py-3.5 px-4">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-indigo-600 text-white font-mono text-xs font-bold">
+                      {{ cls.course_code }}
+                    </span>
+                    <span class="font-semibold text-slate-900">{{ cls.course_title }}</span>
+                  </div>
+                </td>
+                <td class="py-3.5 px-4 font-mono text-xs font-semibold text-slate-700">
+                  {{ cls.class_code }}
+                </td>
+                <td class="py-3.5 px-4">
+                  <div class="text-xs font-semibold text-slate-900">{{ cls.lecturer_name }}</div>
+                  <div class="text-[11px] text-slate-500">{{ cls.department }}</div>
+                </td>
+                <td class="py-3.5 px-4 text-xs text-slate-600">
+                  {{ cls.level }} &bull; {{ cls.semester }} ({{ cls.academic_session }})
+                </td>
+                <td class="py-3.5 px-4 text-xs text-slate-600">
+                  <div>{{ cls.schedule or 'TBA' }}</div>
+                  <div class="text-[11px] text-slate-400">{{ cls.venue or '' }}</div>
+                </td>
+                <td class="py-3.5 px-4 text-right">
+                  <a href="{{ url_for('view_class_page', class_id=cls.id) }}"
+                     class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition">
+                    Open Page
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-8 text-center text-xs text-slate-500">
+        No class pages have been created by lecturers yet.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Password Reset Modal -->
+<div id="reset-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-bold text-slate-900">Reset Lecturer Password</h3>
+      <button type="button" onclick="closeResetModal()" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-4">
+      Set a new password for <span id="reset-lecturer-name" class="font-semibold text-slate-800"></span>.
+    </p>
+    <form id="reset-form" method="POST" action="" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          New Password
+        </label>
+        <input type="text"
+               name="new_password"
+               required
+               minlength="6"
+               value="Lecturer@123"
+               class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button"
+                onclick="closeResetModal()"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500">
+          Update Password
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function generatePassword() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    let randomPart = "";
+    for (let i = 0; i < 6; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    document.getElementById("lec_password").value = "Lec@" + randomPart;
+  }
+
+  function filterLecturers() {
+    const q = document.getElementById("lecturer-search").value.toLowerCase();
+    const rows = document.querySelectorAll(".lecturer-row");
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(q) ? "" : "none";
+    });
+  }
+
+  function openResetModal(docId, fullName) {
+    const modal = document.getElementById("reset-modal");
+    const form = document.getElementById("reset-form");
+    const nameSpan = document.getElementById("reset-lecturer-name");
+    form.action = "/admin/lecturers/" + docId + "/reset-password";
+    nameSpan.textContent = fullName;
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+  }
+
+  function closeResetModal() {
+    const modal = document.getElementById("reset-modal");
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+  }
+</script>
+{% endblock %}
+

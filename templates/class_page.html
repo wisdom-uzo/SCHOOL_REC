@@ -1,0 +1,1751 @@
+{% extends "base.html" %}
+{% block title %}{{ class_page.course_code }} - {{ class_page.course_title }} | Class Page{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Top Action & Breadcrumb Bar -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      {% if session.get('role') == 'admin' %}
+        <a href="{{ url_for('admin_dashboard') }}"
+           class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Admin Dashboard
+        </a>
+      {% elif session.get('user_id') %}
+        <a href="{{ url_for('lecturer_dashboard') }}"
+           class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to My Classes
+        </a>
+      {% else %}
+        <span class="text-xs font-semibold text-slate-500">Public Class Page View</span>
+      {% endif %}
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Copy Shareable Class Link -->
+      <button type="button"
+              onclick="copyClassLink()"
+              id="copy-link-btn"
+              class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition">
+        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        <span id="copy-link-text">Copy Class Link ({{ class_page.class_code }})</span>
+      </button>
+
+      {% if is_owner or is_admin %}
+        <button type="button"
+                onclick="openEditClassModal()"
+                class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition">
+          <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Edit Class Info
+        </button>
+
+        <form method="POST"
+              action="{{ url_for('delete_lecturer_class', class_id=class_page.id) }}"
+              onsubmit="return confirm('Are you sure you want to delete this class page and all its student & lecture records?');"
+              class="inline">
+          <button type="submit"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition">
+            Delete Class
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Class Page Hero Banner -->
+  <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-xl overflow-hidden border border-slate-800">
+    <div class="p-6 sm:p-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-3 py-1 rounded-xl bg-indigo-600 text-white font-mono text-sm font-bold shadow-xs">
+            {{ class_page.course_code }}
+          </span>
+          <span class="px-3 py-1 rounded-xl bg-white/10 text-indigo-200 text-xs font-semibold border border-white/15">
+            {{ class_page.credit_units }} Credit Units
+          </span>
+          <span class="px-3 py-1 rounded-xl bg-white/10 text-slate-200 text-xs font-medium border border-white/10">
+            {{ class_page.level }}
+          </span>
+          <span class="px-3 py-1 rounded-xl bg-white/10 text-slate-200 text-xs font-medium border border-white/10">
+            {{ class_page.semester }} &bull; {{ class_page.academic_session }}
+          </span>
+          <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+            {{ students | length }} {{ 'Student' if (students | length) == 1 else 'Students' }} Enrolled
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-xs px-3 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-indigo-300">
+            Class Code: <strong>{{ class_page.class_code }}</strong>
+          </span>
+          {% if class_page.status == 'active' %}
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              Active
+            </span>
+          {% else %}
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-slate-500/20 text-slate-300 border border-slate-500/30">
+              {{ class_page.status }}
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+        {{ class_page.course_title }}
+      </h1>
+
+      {% if class_page.description %}
+        <p class="text-sm text-slate-300 mt-2.5 max-w-3xl leading-relaxed">
+          {{ class_page.description }}
+        </p>
+      {% endif %}
+
+      <!-- Metadata Bar -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-white/10 text-xs">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-indigo-300 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <div>
+            <p class="text-slate-400">Course Lecturer</p>
+            <p class="font-semibold text-white text-sm">{{ class_page.lecturer_name }}</p>
+            <p class="text-[11px] text-indigo-300">{{ class_page.department }} ({{ class_page.lecturer_staff_id }})</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-indigo-300 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <p class="text-slate-400">Lecture Schedule</p>
+            <p class="font-semibold text-white text-sm">{{ class_page.schedule or 'To Be Announced' }}</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-indigo-300 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <div>
+            <p class="text-slate-400">Lecture Venue</p>
+            <p class="font-semibold text-white text-sm">{{ class_page.venue or 'To Be Announced' }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs: Student Self-Check, Enrolled Students, Lecture Sessions -->
+  <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-1">
+    <button type="button"
+            id="tab-btn-verify"
+            onclick="switchClassTab('verify')"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+      </svg>
+      Student Self-Check &amp; Matric Update
+    </button>
+
+    <button type="button"
+            id="tab-btn-students"
+            onclick="switchClassTab('students')"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      Class Students Roster
+      <span class="px-2 py-0.5 rounded-full text-[11px] bg-indigo-100 text-indigo-700 font-bold">
+        {{ students | length }}
+      </span>
+    </button>
+
+    <button type="button"
+            id="tab-btn-assessments"
+            onclick="switchClassTab('assessments')"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+      Assignments &amp; Projects Scores
+      <span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-100 text-amber-800 font-bold">
+        {{ (assessments | length) if assessments else 0 }}
+      </span>
+    </button>
+
+    <button type="button"
+            id="tab-btn-sessions"
+            onclick="switchClassTab('sessions')"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+      </svg>
+      Lecture Session Logs
+      <span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-200 text-slate-700 font-bold">
+        {{ sessions | length }}
+      </span>
+    </button>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- TAB 0: STUDENT SELF-CHECK / VERIFICATION & MATRIC UPDATE  -->
+  <!-- ========================================================= -->
+  <div id="tab-panel-verify" class="hidden grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- Left 5 Cols: Lookup Box -->
+    <div class="lg:col-span-5 bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+      <div class="bg-gradient-to-r from-indigo-900 to-slate-900 text-white px-6 py-5">
+        <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold uppercase mb-2">
+          Student Portal &bull; {{ class_page.course_code }}
+        </div>
+        <h2 class="text-lg font-bold">Verify Your Class Registration</h2>
+        <p class="text-xs text-slate-300 mt-1">
+          Enter your <strong>GTS Number</strong>, <strong>Matric Number</strong>, <strong>Phone Number</strong>, or <strong>Full Name</strong> to confirm your enrollment and update your Matric Number.
+        </p>
+      </div>
+
+      <form method="GET" action="{{ url_for('public_class_page', class_code=class_page.class_code) }}" class="p-6 space-y-4">
+        <input type="hidden" name="tab" value="verify" />
+        <div>
+          <label for="verify-q" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+            GTS Number / Matric No / Phone / Full Name *
+          </label>
+          <input type="text"
+                 id="verify-q"
+                 name="q"
+                 required
+                 minlength="3"
+                 value="{{ verify_query or '' }}"
+                 placeholder="e.g. GTS2618435 or 09043316023"
+                 class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="submit"
+                  class="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md transition flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            Verify My Registration
+          </button>
+
+          {% if verify_query %}
+            <a href="{{ url_for('public_class_page', class_code=class_page.class_code, tab='verify') }}"
+               class="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition">
+              Reset
+            </a>
+          {% endif %}
+        </div>
+      </form>
+
+      <!-- Class Registration Stats Footer -->
+      <div class="bg-slate-50 border-t border-slate-200 px-6 py-4 grid grid-cols-3 gap-2 text-center">
+        <div>
+          <p class="text-[11px] text-slate-500 uppercase font-semibold">Total Enrolled</p>
+          <p class="text-base font-bold text-slate-900">{{ students | length }}</p>
+        </div>
+        <div>
+          <p class="text-[11px] text-emerald-600 uppercase font-semibold">Matric Updated</p>
+          <p class="text-base font-bold text-emerald-700">{{ matric_completed or 0 }}</p>
+        </div>
+        <div>
+          <p class="text-[11px] text-amber-600 uppercase font-semibold">Matric Pending</p>
+          <p class="text-base font-bold text-amber-700">{{ matric_pending or 0 }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right 7 Cols: Verification Result & Matric Update Card -->
+    <div class="lg:col-span-7 space-y-4">
+      {% if verify_query %}
+        {% if verified_results %}
+          <div class="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <svg class="w-5 h-5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="text-xs font-bold text-emerald-900">
+                Found {{ verified_results | length }} matching student record{{ 's' if (verified_results | length) != 1 else '' }} for "{{ verify_query }}"
+              </span>
+            </div>
+          </div>
+
+          {% for res in verified_results %}
+            <div class="bg-white rounded-2xl border-2 {{ 'border-emerald-300' if res.has_valid_matric else 'border-indigo-300' }} shadow-md overflow-hidden">
+              <!-- Verified Header -->
+              <div class="px-6 py-4 {{ 'bg-emerald-900 text-white' if res.has_valid_matric else 'bg-slate-900 text-white' }} flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5">
+                  <span class="px-2.5 py-1 rounded-lg bg-white/15 font-mono text-xs font-bold text-emerald-300">
+                    Roster #{{ res.serial_no }}
+                  </span>
+                  <span class="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                    &#10003; Verified in {{ class_page.course_code }}
+                  </span>
+                </div>
+
+                {% if res.has_valid_matric %}
+                  <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
+                    Matric Number Active
+                  </span>
+                {% else %}
+                  <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                    Matric Number Needed
+                  </span>
+                {% endif %}
+              </div>
+
+              <!-- Student Details Body -->
+              <div class="p-6 space-y-5">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <p class="text-[11px] uppercase font-semibold text-slate-400">Student Full Name</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ res.full_name }}</p>
+                  </div>
+
+                  <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <p class="text-[11px] uppercase font-semibold text-slate-400">GTS Number</p>
+                    <p class="text-base font-mono font-bold text-indigo-700 mt-0.5">{{ res.gts_number or 'N/A' }}</p>
+                  </div>
+
+                  <div class="p-3.5 rounded-xl {{ 'bg-emerald-50 border border-emerald-200' if res.has_valid_matric else 'bg-amber-50 border border-amber-200' }}">
+                    <p class="text-[11px] uppercase font-semibold {{ 'text-emerald-700' if res.has_valid_matric else 'text-amber-700' }}">
+                      Official Matric Number
+                    </p>
+                    <p class="text-base font-mono font-bold {{ 'text-emerald-900' if res.has_valid_matric else 'text-amber-900' }} mt-0.5">
+                      {{ res.matric_number }}
+                    </p>
+                  </div>
+
+                  <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <p class="text-[11px] uppercase font-semibold text-slate-400">Registered Phone</p>
+                    <p class="text-sm font-mono font-semibold text-slate-700 mt-0.5">
+                      {% if res.phone_number and (res.phone_number | length) >= 7 %}
+                        {{ res.phone_number[:4] }}****{{ res.phone_number[-3:] }}
+                      {% else %}
+                        {{ res.phone_number or 'N/A' }}
+                      {% endif %}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Student's Recorded Assignments & Projects Scores -->
+                {% if assessments %}
+                  <div class="pt-4 border-t border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between">
+                      <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Assignments &amp; Projects Score Summary
+                      </h4>
+                      <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        Total Score: {{ res.overall_total or 0 }} / {{ gradebook_totals.overall_max_total if gradebook_totals else 0 }}
+                      </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {% for a in assessments %}
+                        {% set st_sc = (res.assessment_scores or {}).get(a.id) %}
+                        <div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border {{ 'bg-indigo-50/50 border-indigo-200' if st_sc is not none else 'bg-slate-50 border-slate-200' }}">
+                          <div>
+                            <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded {{ 'bg-amber-100 text-amber-800' if a.category == 'Project' else 'bg-indigo-100 text-indigo-800' }}">
+                              {{ a.category }}
+                            </span>
+                            <p class="text-xs font-semibold text-slate-800 mt-1">{{ a.title }}</p>
+                          </div>
+                          <div class="text-right font-mono">
+                            {% if st_sc is not none %}
+                              <span class="text-sm font-bold text-indigo-900">{{ st_sc }}</span>
+                              <span class="text-xs text-slate-400">/ {{ a.max_score }}</span>
+                            {% else %}
+                              <span class="text-xs text-slate-400 italic">Not graded</span>
+                            {% endif %}
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+
+                <!-- Self-Service Matric Number Update Form -->
+                <div class="pt-4 border-t border-slate-200">
+                  <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      {% if res.has_valid_matric %}
+                        Need to Correct Your Matric Number?
+                      {% else %}
+                        Submit Your Official Matric Number
+                      {% endif %}
+                    </h4>
+                    <span class="text-[11px] text-slate-400">Instant Firebase Sync</span>
+                  </div>
+
+                  <form method="POST"
+                        action="{{ url_for('student_update_own_matric', class_code=class_page.class_code) }}"
+                        class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                    <input type="hidden" name="student_id" value="{{ res.id }}" />
+                    <input type="hidden" name="return_query" value="{{ verify_query }}" />
+
+                    <div class="sm:col-span-5">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Confirm Your GTS or Phone No. *
+                      </label>
+                      <input type="text"
+                             name="verification_token"
+                             required
+                             placeholder="Enter your GTS or Phone No"
+                             class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+
+                    <div class="sm:col-span-4">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">
+                        New Matric Number *
+                      </label>
+                      <input type="text"
+                             name="new_matric_number"
+                             required
+                             placeholder="e.g. 26010211050"
+                             value="{{ res.matric_number if res.has_valid_matric else '' }}"
+                             class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+
+                    <div class="sm:col-span-3">
+                      <button type="submit"
+                              class="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition">
+                        Save Matric No.
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <!-- No Matching Student Found -->
+          <div class="bg-rose-50 border border-rose-200 rounded-2xl p-8 text-center">
+            <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 class="text-base font-bold text-rose-950">Student Record Not Found</h3>
+            <p class="text-xs text-rose-800 max-w-md mx-auto mt-1 leading-relaxed">
+              No student matching <strong>"{{ verify_query }}"</strong> was found on the <strong>{{ class_page.course_code }}</strong> class roster. Please check your GTS Number, Phone Number, or Surname and try again, or contact <strong>{{ class_page.lecturer_name }}</strong>.
+            </p>
+          </div>
+        {% endif %}
+      {% else %}
+        <!-- Default Instructions Card before Search -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+          <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Student Self-Verification Portal</h3>
+          <p class="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+            Students enrolled in <strong>{{ class_page.course_code }} ({{ class_page.course_title }})</strong> can use the search box on the left to:
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5 text-left text-xs">
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="font-bold text-indigo-600 block mb-0.5">1. Check Class List</span>
+              <span class="text-slate-600">Confirm your name and serial number on the official class roster.</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="font-bold text-indigo-600 block mb-0.5">2. Verify GTS Number</span>
+              <span class="text-slate-600">Ensure your GTS number is accurately recorded.</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="font-bold text-indigo-600 block mb-0.5">3. Update Matric No.</span>
+              <span class="text-slate-600">Replace "NOT AVAILABLE" with your official Matric Number.</span>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- TAB 1: CLASS STUDENTS ROSTER (ADD OR UPLOAD EXCEL / CSV)  -->
+  <!-- ========================================================= -->
+  <div id="tab-panel-students" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    {% if is_owner or is_admin %}
+      <!-- Left 4 Cols: Bulk Upload Excel/CSV + Manual Add Student -->
+      <div class="lg:col-span-4 space-y-6">
+
+        <!-- Card 1: Upload Excel / CSV -->
+        <div class="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+          <div class="bg-indigo-950 text-white px-5 py-4 flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-bold">Upload Students (Excel / CSV)</h2>
+              <p class="text-[11px] text-indigo-200">Bulk import student records into {{ class_page.course_code }}</p>
+            </div>
+            <svg class="w-5 h-5 text-indigo-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </div>
+
+          <form method="POST"
+                action="{{ url_for('upload_class_students', class_id=class_page.id) }}"
+                enctype="multipart/form-data"
+                class="p-5 space-y-4">
+            <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-xs text-slate-700 space-y-1.5">
+              <p class="font-semibold text-indigo-950">Required Columns:</p>
+              <div class="grid grid-cols-2 gap-1 text-[11px] font-mono text-indigo-800">
+                <span>1. Full Name</span>
+                <span>2. Matric Number</span>
+                <span>3. GTS Number</span>
+                <span>4. Phone Number</span>
+              </div>
+              <div class="pt-2 border-t border-indigo-200/60 flex items-center justify-between gap-2">
+                <span class="text-[11px] text-slate-500">Download Template:</span>
+                <div class="flex items-center gap-2">
+                  <a href="{{ url_for('download_student_template', ext='xlsx') }}"
+                     class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline">
+                    Excel (.xlsx)
+                  </a>
+                  <span class="text-slate-300">|</span>
+                  <a href="{{ url_for('download_student_template', ext='csv') }}"
+                     class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline">
+                    CSV (.csv)
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                Select Excel (.xlsx) or CSV (.csv) File *
+              </label>
+              <input type="file"
+                     name="students_file"
+                     accept=".xlsx,.csv,.txt"
+                     required
+                     class="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-300 rounded-xl p-1.5 cursor-pointer" />
+            </div>
+
+            <button type="submit"
+                    class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Upload Student Records
+            </button>
+          </form>
+        </div>
+
+        <!-- Card 2: Add Single Student Manually -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-bold">Add Individual Student</h2>
+              <p class="text-[11px] text-slate-400">Manually register a student in this class</p>
+            </div>
+            <span class="w-7 h-7 rounded-lg bg-slate-800 text-indigo-300 flex items-center justify-center font-bold text-sm">+</span>
+          </div>
+
+          <form method="POST"
+                action="{{ url_for('add_class_student', class_id=class_page.id) }}"
+                class="p-5 space-y-3.5">
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Full Name *
+              </label>
+              <input type="text"
+                     name="full_name"
+                     required
+                     placeholder="e.g. Adebayo Oluwaseun"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Matric Number <span class="text-[10px] font-normal text-slate-400">(or leave as NOT AVAILABLE)</span>
+              </label>
+              <input type="text"
+                     name="matric_number"
+                     value="NOT AVAILABLE"
+                     placeholder="e.g. CSC/2023/001 or NOT AVAILABLE"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                GTS Number *
+              </label>
+              <input type="text"
+                     name="gts_number"
+                     required
+                     placeholder="e.g. GTS-2026-1001"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Phone Number *
+              </label>
+              <input type="text"
+                     name="phone_number"
+                     required
+                     placeholder="e.g. 08031234567"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <button type="submit"
+                    class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-sm transition">
+              Add Student to Class
+            </button>
+          </form>
+        </div>
+
+      </div>
+    {% endif %}
+
+    <!-- Right 8 Cols: Enrolled Students Table -->
+    <div class="{{ 'lg:col-span-8' if (is_owner or is_admin) else 'lg:col-span-12' }} bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">
+            Enrolled Students ({{ students | length }})
+          </h2>
+          <p class="text-xs text-slate-500">Student records registered for {{ class_page.course_code }}</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Search Box -->
+          <div class="relative w-full sm:w-56">
+            <input type="text"
+                   id="student-search"
+                   onkeyup="filterStudents()"
+                   placeholder="Search name, matric, GTS..."
+                   class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+
+          {% if students and (is_owner or is_admin) %}
+            <a href="{{ url_for('export_class_students_csv', class_id=class_page.id) }}"
+               class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </a>
+
+            <form method="POST"
+                  action="{{ url_for('clear_all_class_students', class_id=class_page.id) }}"
+                  onsubmit="return confirm('Remove ALL {{ students | length }} students from this class?');"
+                  class="inline">
+              <button type="submit"
+                      class="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition">
+                Clear All
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if students %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse" id="students-table">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <th class="py-3 px-4 w-12">#</th>
+                <th class="py-3 px-4">Full Name</th>
+                <th class="py-3 px-4">Matric Number</th>
+                <th class="py-3 px-4">GTS Number</th>
+                <th class="py-3 px-4">Phone Number</th>
+                {% if is_owner or is_admin %}
+                  <th class="py-3 px-4 text-right">Actions</th>
+                {% endif %}
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 text-sm">
+              {% for st in students %}
+                <tr class="hover:bg-slate-50/80 transition student-row">
+                  <td class="py-3 px-4 text-xs font-mono text-slate-400">
+                    {{ loop.index }}
+                  </td>
+                  <td class="py-3 px-4 font-semibold text-slate-900">
+                    {{ st.full_name }}
+                  </td>
+                  <td class="py-3 px-4">
+                    {% if st.has_valid_matric %}
+                      <span class="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 font-mono text-xs font-bold text-emerald-800">
+                        {{ st.matric_number }}
+                      </span>
+                    {% else %}
+                      <span class="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 font-mono text-[11px] font-semibold text-amber-700">
+                        {{ st.matric_number or 'NOT AVAILABLE' }}
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="py-3 px-4">
+                    {% if st.gts_number %}
+                      <span class="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-mono text-xs font-semibold text-slate-800">
+                        {{ st.gts_number }}
+                      </span>
+                    {% else %}
+                      <span class="text-xs text-slate-400">&mdash;</span>
+                    {% endif %}
+                  </td>
+                  <td class="py-3 px-4 text-xs font-medium text-slate-700 font-mono">
+                    {% if is_owner or is_admin %}
+                      {{ st.phone_number or '—' }}
+                    {% elif st.phone_number and (st.phone_number | length) >= 7 %}
+                      {{ st.phone_number[:4] }}****{{ st.phone_number[-3:] }}
+                    {% else %}
+                      {{ st.phone_number or '—' }}
+                    {% endif %}
+                  </td>
+                  {% if is_owner or is_admin %}
+                    <td class="py-3 px-4 text-right">
+                      <div class="inline-flex items-center justify-end gap-1.5">
+                        <button type="button"
+                                onclick="openEditStudentModal('{{ st.id }}', '{{ st.full_name | e }}', '{{ st.matric_number | e }}', '{{ st.gts_number | e }}', '{{ st.phone_number | e }}')"
+                                class="px-2.5 py-1 rounded-lg text-xs font-semibold border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition">
+                          Edit
+                        </button>
+
+                        <form method="POST"
+                              action="{{ url_for('remove_class_student', class_id=class_page.id, student_id=st.id) }}"
+                              onsubmit="return confirm('Remove {{ st.full_name | e }} from this class?');"
+                              class="inline">
+                          <button type="submit"
+                                  class="px-2.5 py-1 rounded-lg text-xs font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition">
+                            Remove
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-12 text-center">
+          <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h3 class="text-sm font-bold text-slate-800">No Students Added to {{ class_page.course_code }} Yet</h3>
+          <p class="text-xs text-slate-500 max-w-md mx-auto mt-1">
+            {% if is_owner or is_admin %}
+              Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV (.csv)</strong> file with Full Name, Matric Number, GTS Number, and Phone Number, or add students individually using the form on the left.
+            {% else %}
+              The lecturer has not uploaded the student list for this class yet.
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- TAB 1B: ASSIGNMENTS & PROJECTS SCORES (GRADEBOOK)         -->
+  <!-- ========================================================= -->
+  <div id="tab-panel-assessments" class="hidden grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    {% if is_owner or is_admin %}
+      <!-- Left 4 Cols: Create Assignment / Project + List of Assessments -->
+      <div class="lg:col-span-4 space-y-6">
+
+        <!-- Card 1: Create New Assignment or Project -->
+        <div class="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+          <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-bold">Create Assignment / Project</h2>
+              <p class="text-[11px] text-slate-400">Add a score column for {{ class_page.course_code }}</p>
+            </div>
+            <span class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">+</span>
+          </div>
+
+          <form method="POST"
+                action="{{ url_for('create_assessment', class_id=class_page.id) }}"
+                class="p-5 space-y-3.5">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                  Category *
+                </label>
+                <select name="category"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="Assignment">Assignment</option>
+                  <option value="Project">Project</option>
+                  <option value="Practical">Practical</option>
+                  <option value="Test">Test</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                  Max Score *
+                </label>
+                <input type="number"
+                       name="max_score"
+                       min="1"
+                       max="100"
+                       step="any"
+                       required
+                       value="10"
+                       placeholder="e.g. 10 or 20"
+                       class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Title *
+              </label>
+              <input type="text"
+                     name="title"
+                     required
+                     placeholder="e.g. Assignment 1 or Group Project"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Date Given
+              </label>
+              <input type="date"
+                     name="date_given"
+                     id="assessment-date-input"
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Description / Instructions (Optional)
+              </label>
+              <input type="text"
+                     name="description"
+                     placeholder="Short note on topic or instructions..."
+                     class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <button type="submit"
+                    class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition">
+              Create Score Column
+            </button>
+          </form>
+        </div>
+
+        <!-- Card 2: Created Assignments & Projects List -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Select Assessment to Grade ({{ assessments | length }})
+            </h3>
+            {% if assessments %}
+              <a href="{{ url_for('export_class_gradebook_csv', class_id=class_page.id) }}"
+                 class="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 underline">
+                Export All CSV
+              </a>
+            {% endif %}
+          </div>
+
+          {% if assessments %}
+            <div class="divide-y divide-slate-200">
+              {% for a in assessments %}
+                {% set is_sel = (selected_assessment and selected_assessment.id == a.id) %}
+                {% set graded_cnt = (a.scores | length) if a.scores else 0 %}
+                <div class="p-4 flex items-center justify-between gap-2 transition {{ 'bg-indigo-50/80 border-l-4 border-indigo-600' if is_sel else 'hover:bg-slate-50' }}">
+                  <a href="{{ url_for('view_class_page', class_id=class_page.id, tab='assessments', assessment_id=a.id) }}"
+                     class="flex-1 block">
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase {{ 'bg-amber-100 text-amber-800' if a.category == 'Project' else 'bg-indigo-100 text-indigo-800' }}">
+                        {{ a.category }}
+                      </span>
+                      <span class="text-xs font-mono font-bold text-slate-600">
+                        Max: {{ a.max_score }} pts
+                      </span>
+                    </div>
+                    <p class="text-sm font-bold text-slate-900 mt-1">{{ a.title }}</p>
+                    <p class="text-[11px] text-slate-500 mt-0.5">
+                      Graded: <strong>{{ graded_cnt }}</strong> / {{ students | length }} students
+                    </p>
+                  </a>
+
+                  <div class="flex items-center gap-1.5">
+                    <a href="{{ url_for('view_class_page', class_id=class_page.id, tab='assessments', assessment_id=a.id) }}"
+                       class="px-2.5 py-1.5 rounded-lg text-xs font-semibold {{ 'bg-indigo-600 text-white' if is_sel else 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
+                      {{ 'Active' if is_sel else 'Grade' }}
+                    </a>
+
+                    <form method="POST"
+                          action="{{ url_for('remove_assessment', class_id=class_page.id, assessment_id=a.id) }}"
+                          onsubmit="return confirm('Delete {{ a.title | e }} and all recorded scores for it?');"
+                          class="inline">
+                      <button type="submit"
+                              title="Delete Assessment"
+                              class="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition">
+                        &times;
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="p-6 text-center text-xs text-slate-500">
+              No Assignments or Projects created yet. Use the form above to create your first Assignment or Project.
+            </div>
+          {% endif %}
+        </div>
+
+      </div>
+    {% endif %}
+
+    <!-- Right 8 Cols: Score Entry Sheet for Selected Assessment + Master Summary Gradebook -->
+    <div class="{{ 'lg:col-span-8' if (is_owner or is_admin) else 'lg:col-span-12' }} space-y-6">
+
+      {% if selected_assessment and (is_owner or is_admin) %}
+        <!-- Active Assessment Score Recording Card -->
+        <div class="bg-white rounded-2xl border-2 border-indigo-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase {{ 'bg-amber-500 text-slate-950' if selected_assessment.category == 'Project' else 'bg-indigo-500 text-white' }}">
+                  {{ selected_assessment.category }}
+                </span>
+                <span class="text-xs text-indigo-200 font-mono">
+                  Max Obtainable: <strong>{{ selected_assessment.max_score }} Marks</strong>
+                </span>
+              </div>
+              <h2 class="text-lg font-bold mt-1">
+                Record Scores: {{ selected_assessment.title }}
+              </h2>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span class="px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-emerald-300 border border-white/15">
+                {{ (selected_assessment.scores | length) if selected_assessment.scores else 0 }} / {{ students | length }} Graded
+              </span>
+            </div>
+          </div>
+
+          <!-- Quick Single-Student Score Entry + Bulk CSV/Excel Score Upload Bar -->
+          <div class="p-5 bg-slate-50 border-b border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+
+            <!-- Quick Single Student Score Form -->
+            <form method="POST"
+                  action="{{ url_for('save_assessment_scores_route', class_id=class_page.id, assessment_id=selected_assessment.id) }}"
+                  class="md:col-span-7 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end bg-white p-3.5 rounded-xl border border-slate-200">
+              <div class="sm:col-span-7">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Quick Record: Select Student
+                </label>
+                <select name="quick_student_id"
+                        required
+                        class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">-- Choose Student ({{ students | length }}) --</option>
+                  {% for st in students %}
+                    {% set existing_sc = (selected_assessment.scores or {}).get(st.id) %}
+                    <option value="{{ st.id }}">
+                      #{{ loop.index }} {{ st.full_name }} ({{ st.gts_number or st.matric_number }}){% if existing_sc is not none %} — [{{ existing_sc }}/{{ selected_assessment.max_score }}]{% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="sm:col-span-3">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Score (/{{ selected_assessment.max_score }})
+                </label>
+                <input type="number"
+                       name="quick_score"
+                       min="0"
+                       max="{{ selected_assessment.max_score }}"
+                       step="any"
+                       required
+                       placeholder="0 - {{ selected_assessment.max_score }}"
+                       class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div class="sm:col-span-2">
+                <button type="submit"
+                        class="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition">
+                  Save
+                </button>
+              </div>
+            </form>
+
+            <!-- Bulk Upload Scores via Excel/CSV -->
+            <form method="POST"
+                  action="{{ url_for('upload_assessment_scores_route', class_id=class_page.id, assessment_id=selected_assessment.id) }}"
+                  enctype="multipart/form-data"
+                  class="md:col-span-5 flex items-end gap-2 bg-white p-3.5 rounded-xl border border-slate-200">
+              <div class="flex-1">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Upload Scores (.xlsx / .csv)
+                </label>
+                <input type="file"
+                       name="scores_file"
+                       accept=".xlsx,.csv,.txt"
+                       required
+                       class="w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-indigo-50 file:text-indigo-700" />
+              </div>
+              <button type="submit"
+                      class="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shrink-0 transition">
+                Import
+              </button>
+            </form>
+
+          </div>
+
+          <!-- Full Interactive Student Score Sheet Form -->
+          <form method="POST"
+                action="{{ url_for('save_assessment_scores_route', class_id=class_page.id, assessment_id=selected_assessment.id) }}">
+            <div class="px-6 py-3.5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white">
+              <div class="relative w-full sm:w-64">
+                <input type="text"
+                       id="scoresheet-search"
+                       onkeyup="filterScoreSheet()"
+                       placeholder="Filter student by name, GTS, matric..."
+                       class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+
+              <button type="submit"
+                      class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Save All Entered Scores
+              </button>
+            </div>
+
+            {% if students %}
+              <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead class="sticky top-0 bg-slate-100 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600 z-10">
+                    <tr>
+                      <th class="py-3 px-4 w-12">#</th>
+                      <th class="py-3 px-4">Student Full Name</th>
+                      <th class="py-3 px-4">GTS Number</th>
+                      <th class="py-3 px-4">Matric Number</th>
+                      <th class="py-3 px-4 w-40 text-right">
+                        Score (/ {{ selected_assessment.max_score }})
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-200 text-sm">
+                    {% for st in students %}
+                      {% set cur_score = (selected_assessment.scores or {}).get(st.id) %}
+                      <tr class="hover:bg-indigo-50/40 transition scoresheet-row">
+                        <td class="py-2.5 px-4 text-xs font-mono text-slate-400">{{ loop.index }}</td>
+                        <td class="py-2.5 px-4 font-semibold text-slate-900">{{ st.full_name }}</td>
+                        <td class="py-2.5 px-4 font-mono text-xs text-slate-700">{{ st.gts_number or '—' }}</td>
+                        <td class="py-2.5 px-4 font-mono text-xs {{ 'text-emerald-700 font-bold' if st.has_valid_matric else 'text-slate-400' }}">
+                          {{ st.matric_number }}
+                        </td>
+                        <td class="py-2.5 px-4 text-right">
+                          <div class="inline-flex items-center gap-1.5">
+                            <input type="number"
+                                   name="score__{{ st.id }}"
+                                   min="0"
+                                   max="{{ selected_assessment.max_score }}"
+                                   step="any"
+                                   value="{{ cur_score if cur_score is not none else '' }}"
+                                   placeholder="—"
+                                   class="w-20 px-2.5 py-1.5 rounded-lg border {{ 'border-emerald-400 bg-emerald-50/50 text-emerald-900 font-bold' if cur_score is not none else 'border-slate-300 bg-white text-slate-800' }} text-xs font-mono text-right focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                            <span class="text-xs font-mono text-slate-400">/ {{ selected_assessment.max_score }}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span class="text-xs text-slate-500">
+                  Tip: Enter scores for any number of students and click <strong>Save All Entered Scores</strong>.
+                </span>
+                <button type="submit"
+                        class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition">
+                  Save All Entered Scores
+                </button>
+              </div>
+            {% endif %}
+          </form>
+        </div>
+      {% endif %}
+
+      <!-- Master Course Gradebook Summary Table (All Assignments + Projects Totals) -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">
+              Course Assessment Gradebook Summary
+            </h2>
+            <p class="text-xs text-slate-500">
+              Combined Assignments ({{ gradebook_totals.assignment_max_total if gradebook_totals else 0 }} pts) &amp; Projects ({{ gradebook_totals.project_max_total if gradebook_totals else 0 }} pts) for {{ class_page.course_code }}
+            </p>
+          </div>
+
+          {% if assessments and (is_owner or is_admin) %}
+            <a href="{{ url_for('export_class_gradebook_csv', class_id=class_page.id) }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download Complete Gradebook (CSV)
+            </a>
+          {% endif %}
+        </div>
+
+        {% if assessments and students %}
+          <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="sticky top-0 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500 z-10">
+                <tr>
+                  <th class="py-3 px-3">#</th>
+                  <th class="py-3 px-3">Student Name</th>
+                  <th class="py-3 px-3">GTS / Matric</th>
+                  {% for a in assessments %}
+                    <th class="py-3 px-3 text-center">
+                      <span class="block text-[10px] {{ 'text-amber-700' if a.category == 'Project' else 'text-indigo-700' }}">{{ a.category }}</span>
+                      <span class="text-slate-800">{{ a.title }}</span>
+                      <span class="block text-[10px] font-mono text-slate-400">(/{{ a.max_score }})</span>
+                    </th>
+                  {% endfor %}
+                  <th class="py-3 px-3 text-center bg-indigo-50/60 text-indigo-900">
+                    Assignments<br/><span class="text-[10px] font-mono">(/{{ gradebook_totals.assignment_max_total }})</span>
+                  </th>
+                  <th class="py-3 px-3 text-center bg-amber-50/60 text-amber-900">
+                    Projects<br/><span class="text-[10px] font-mono">(/{{ gradebook_totals.project_max_total }})</span>
+                  </th>
+                  <th class="py-3 px-3 text-center bg-emerald-50 text-emerald-900">
+                    Total Score<br/><span class="text-[10px] font-mono">(/{{ gradebook_totals.overall_max_total }})</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                {% for st in students %}
+                  <tr class="hover:bg-slate-50/80">
+                    <td class="py-2.5 px-3 font-mono text-slate-400">{{ loop.index }}</td>
+                    <td class="py-2.5 px-3 font-semibold text-slate-900">{{ st.full_name }}</td>
+                    <td class="py-2.5 px-3 font-mono text-[11px] text-slate-600">
+                      {{ st.gts_number or st.matric_number }}
+                    </td>
+                    {% for a in assessments %}
+                      {% set sc = (st.assessment_scores or {}).get(a.id) %}
+                      <td class="py-2.5 px-3 text-center font-mono">
+                        {% if sc is not none %}
+                          <span class="font-bold text-slate-900">{{ sc }}</span>
+                        {% else %}
+                          <span class="text-slate-300">&mdash;</span>
+                        {% endif %}
+                      </td>
+                    {% endfor %}
+                    <td class="py-2.5 px-3 text-center font-mono font-bold text-indigo-800 bg-indigo-50/30">
+                      {{ st.assignment_total or 0 }}
+                    </td>
+                    <td class="py-2.5 px-3 text-center font-mono font-bold text-amber-800 bg-amber-50/30">
+                      {{ st.project_total or 0 }}
+                    </td>
+                    <td class="py-2.5 px-3 text-center font-mono font-bold text-emerald-800 bg-emerald-50/50">
+                      {{ st.overall_total or 0 }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-10 text-center text-xs text-slate-500">
+            Create an <strong>Assignment</strong> or <strong>Project</strong> on the left to start recording student scores and generating the course gradebook.
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- TAB 2: LECTURE SESSION LOGS                               -->
+  <!-- ========================================================= -->
+  <div id="tab-panel-sessions" class="hidden grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    {% if is_owner or is_admin %}
+      <!-- Left 4 Cols: Record New Lecture Session Form -->
+      <div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-bold">Log Lecture Session</h2>
+            <p class="text-[11px] text-slate-400">Add a lecture record to this class page</p>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-indigo-600 text-[11px] font-bold">Week {{ next_week }}</span>
+        </div>
+
+        <form method="POST" action="{{ url_for('add_class_session', class_id=class_page.id) }}" class="p-5 space-y-3.5">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Week No. *
+              </label>
+              <input type="number"
+                     name="week_number"
+                     min="1"
+                     max="52"
+                     required
+                     value="{{ next_week }}"
+                     class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Lecture Date *
+              </label>
+              <input type="date"
+                     name="lecture_date"
+                     id="session-date-input"
+                     required
+                     class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Topic Covered *
+            </label>
+            <input type="text"
+                   name="topic"
+                   required
+                   placeholder="e.g. Binary Search Trees & Traversal"
+                   class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Start Time
+              </label>
+              <input type="time"
+                     name="start_time"
+                     value="10:00"
+                     class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                End Time
+              </label>
+              <input type="time"
+                     name="end_time"
+                     value="12:00"
+                     class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Venue Held
+              </label>
+              <input type="text"
+                     name="venue"
+                     value="{{ class_page.venue }}"
+                     placeholder="e.g. LT-1"
+                     class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                Students Present
+              </label>
+              <input type="number"
+                     name="attendance_count"
+                     min="0"
+                     value="{{ students | length }}"
+                     placeholder="e.g. 65"
+                     class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Lecture Summary / Key Notes
+            </label>
+            <textarea name="summary"
+                      rows="3"
+                      placeholder="Key concepts taught, assignments given, or announcements..."
+                      class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Slides / Material Link (Optional)
+            </label>
+            <input type="url"
+                   name="materials_link"
+                   placeholder="https://drive.google.com/..."
+                   class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <button type="submit"
+                  class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition">
+            Save Lecture Record
+          </button>
+        </form>
+      </div>
+    {% endif %}
+
+    <!-- Lecture Sessions Timeline -->
+    <div class="{{ 'lg:col-span-8' if (is_owner or is_admin) else 'lg:col-span-12' }} space-y-4">
+      <div class="bg-white px-6 py-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Class Lecture Records</h2>
+          <p class="text-xs text-slate-500">Chronological log of lectures delivered for {{ class_page.course_code }}</p>
+        </div>
+        <span class="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+          {{ sessions | length }} {{ 'Session' if (sessions | length) == 1 else 'Sessions' }} Logged
+        </span>
+      </div>
+
+      {% if sessions %}
+        <div class="space-y-3">
+          {% for sess in sessions %}
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:border-indigo-200 transition">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                  <span class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">
+                    Week {{ sess.week_number }}
+                  </span>
+                  <h3 class="text-base font-bold text-slate-900">{{ sess.topic }}</h3>
+                </div>
+
+                <div class="flex items-center gap-2 text-xs text-slate-500">
+                  <span class="px-2.5 py-1 rounded-lg bg-slate-100 font-mono text-slate-700 font-medium">
+                    {{ sess.lecture_date }}
+                    {% if sess.start_time %}
+                      &bull; {{ sess.start_time }}{% if sess.end_time %} - {{ sess.end_time }}{% endif %}
+                    {% endif %}
+                  </span>
+
+                  {% if is_owner or is_admin %}
+                    <form method="POST"
+                          action="{{ url_for('remove_class_session', class_id=class_page.id, session_id=sess.id) }}"
+                          onsubmit="return confirm('Delete this lecture session record?');"
+                          class="inline">
+                      <button type="submit"
+                              title="Remove Record"
+                              class="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if sess.summary %}
+                <p class="text-sm text-slate-700 mt-3 leading-relaxed whitespace-pre-line">{{ sess.summary }}</p>
+              {% endif %}
+
+              <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500">
+                <div class="flex flex-wrap items-center gap-4">
+                  <span class="inline-flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Venue: <strong class="text-slate-700">{{ sess.venue or class_page.venue or 'N/A' }}</strong>
+                  </span>
+
+                  <span class="inline-flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Attendance: <strong class="text-emerald-700">{{ sess.attendance_count }} Students</strong>
+                  </span>
+                </div>
+
+                {% if sess.materials_link %}
+                  <a href="{{ sess.materials_link }}"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-semibold">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                    View Lecture Material
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center">
+          <p class="text-sm font-bold text-slate-800">No Lecture Sessions Logged Yet</p>
+          <p class="text-xs text-slate-500 mt-1">
+            {% if is_owner or is_admin %}
+              Use the <strong>Log Lecture Session</strong> form on the left to record your first lecture for {{ class_page.course_code }}.
+            {% else %}
+              The lecturer has not posted any lecture session records for this class yet.
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+{% if is_owner or is_admin %}
+<!-- Edit Student Modal -->
+<div id="edit-student-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+    <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+      <h3 class="text-base font-bold">Edit Student Record</h3>
+      <button type="button" onclick="closeEditStudentModal()" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+    </div>
+
+    <form id="edit-student-form" method="POST" action="" class="p-6 space-y-4">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          Full Name *
+        </label>
+        <input type="text"
+               id="edit-st-name"
+               name="full_name"
+               required
+               class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          Matric Number *
+        </label>
+        <input type="text"
+               id="edit-st-matric"
+               name="matric_number"
+               required
+               class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          GTS Number *
+        </label>
+        <input type="text"
+               id="edit-st-gts"
+               name="gts_number"
+               required
+               class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          Phone Number *
+        </label>
+        <input type="text"
+               id="edit-st-phone"
+               name="phone_number"
+               required
+               class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button"
+                onclick="closeEditStudentModal()"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md">
+          Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Class Page Modal -->
+<div id="edit-class-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
+    <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+      <div>
+        <h3 class="text-base font-bold">Edit Class Page Details</h3>
+        <p class="text-xs text-slate-400">{{ class_page.course_code }} &bull; {{ class_page.class_code }}</p>
+      </div>
+      <button type="button" onclick="closeEditClassModal()" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('update_lecturer_class', class_id=class_page.id) }}" class="p-6 space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Course Code *
+          </label>
+          <input type="text"
+                 name="course_code"
+                 required
+                 value="{{ class_page.course_code }}"
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Course Title *
+          </label>
+          <input type="text"
+                 name="course_title"
+                 required
+                 value="{{ class_page.course_title }}"
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Level
+          </label>
+          <select name="level"
+                  class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            {% for lvl in ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Postgraduate'] %}
+              <option value="{{ lvl }}" {% if class_page.level == lvl %}selected{% endif %}>{{ lvl }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Semester
+          </label>
+          <select name="semester"
+                  class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            {% for sem in ['First Semester', 'Second Semester'] %}
+              <option value="{{ sem }}" {% if class_page.semester == sem %}selected{% endif %}>{{ sem }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Credit Units
+          </label>
+          <input type="number"
+                 name="credit_units"
+                 min="1"
+                 max="12"
+                 value="{{ class_page.credit_units }}"
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Academic Session
+          </label>
+          <input type="text"
+                 name="academic_session"
+                 value="{{ class_page.academic_session }}"
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Schedule
+          </label>
+          <input type="text"
+                 name="schedule"
+                 value="{{ class_page.schedule }}"
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Venue
+          </label>
+          <input type="text"
+                 name="venue"
+                 value="{{ class_page.venue }}"
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Course Description
+          </label>
+          <textarea name="description"
+                    rows="2"
+                    class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">{{ class_page.description }}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Class Status
+          </label>
+          <select name="status"
+                  class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="active" {% if class_page.status == 'active' %}selected{% endif %}>Active</option>
+            <option value="completed" {% if class_page.status == 'completed' %}selected{% endif %}>Completed</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+        <button type="button"
+                onclick="closeEditClassModal()"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md">
+          Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function switchClassTab(tab) {
+    const panels = {
+      verify: document.getElementById('tab-panel-verify'),
+      students: document.getElementById('tab-panel-students'),
+      assessments: document.getElementById('tab-panel-assessments'),
+      sessions: document.getElementById('tab-panel-sessions')
+    };
+    const btns = {
+      verify: document.getElementById('tab-btn-verify'),
+      students: document.getElementById('tab-btn-students'),
+      assessments: document.getElementById('tab-btn-assessments'),
+      sessions: document.getElementById('tab-btn-sessions')
+    };
+
+    const activeClass = "inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider bg-slate-900 text-white shadow-xs transition";
+    const inactiveClass = "inline-flex items-center gap-2 px-5 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider bg-white text-slate-600 hover:text-slate-900 border border-b-0 border-slate-200 transition";
+
+    Object.keys(panels).forEach(key => {
+      if (!panels[key] || !btns[key]) return;
+      if (key === tab) {
+        panels[key].classList.remove('hidden');
+        panels[key].classList.add('grid');
+        btns[key].className = activeClass;
+      } else {
+        panels[key].classList.add('hidden');
+        panels[key].classList.remove('grid');
+        btns[key].className = inactiveClass;
+      }
+    });
+  }
+
+  function filterStudents() {
+    const q = document.getElementById("student-search").value.toLowerCase();
+    const rows = document.querySelectorAll(".student-row");
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(q) ? "" : "none";
+    });
+  }
+
+  function filterScoreSheet() {
+    const input = document.getElementById("scoresheet-search");
+    if (!input) return;
+    const q = input.value.toLowerCase();
+    const rows = document.querySelectorAll(".scoresheet-row");
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(q) ? "" : "none";
+    });
+  }
+
+  function openEditStudentModal(studentId, fullName, matricNo, gtsNo, phoneNo) {
+    const modal = document.getElementById('edit-student-modal');
+    const form = document.getElementById('edit-student-form');
+    form.action = "/lecturer/classes/{{ class_page.id }}/students/" + studentId + "/update";
+    document.getElementById('edit-st-name').value = fullName;
+    document.getElementById('edit-st-matric').value = matricNo;
+    document.getElementById('edit-st-gts').value = gtsNo;
+    document.getElementById('edit-st-phone').value = phoneNo;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  function closeEditStudentModal() {
+    const modal = document.getElementById('edit-student-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('session-date-input');
+    if (dateInput && !dateInput.value) {
+      dateInput.value = today;
+    }
+    const assessmentDateInput = document.getElementById('assessment-date-input');
+    if (assessmentDateInput && !assessmentDateInput.value) {
+      assessmentDateInput.value = today;
+    }
+    switchClassTab("{{ active_tab or 'students' }}");
+  });
+
+  function copyClassLink() {
+    const publicUrl = window.location.origin + "{{ url_for('public_class_page', class_code=class_page.class_code) }}";
+    navigator.clipboard.writeText(publicUrl).then(() => {
+      const span = document.getElementById('copy-link-text');
+      const original = span.textContent;
+      span.textContent = "Copied Public Link!";
+      setTimeout(() => { span.textContent = original; }, 2000);
+    });
+  }
+
+  function openEditClassModal() {
+    const modal = document.getElementById('edit-class-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+  }
+
+  function closeEditClassModal() {
+    const modal = document.getElementById('edit-class-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  }
+</script>
+{% endblock %}
