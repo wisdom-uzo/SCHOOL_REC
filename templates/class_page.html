@@ -41,6 +41,26 @@
       </button>
 
       {% if is_owner or is_admin %}
+        <!-- Toggle Student Self-Registration (Activate / Deactivate) -->
+        <form method="POST"
+              action="{{ url_for('toggle_class_self_registration', class_id=class_page.id) }}"
+              class="inline">
+          <input type="hidden" name="return_tab" value="{{ active_tab or 'students' }}" />
+          {% if class_page.allow_self_registration %}
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition">
+              <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+              Self-Registration: ACTIVE (Click to Deactivate)
+            </button>
+          {% else %}
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 hover:bg-amber-100 text-amber-900 text-xs font-bold shadow-2xs transition">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              Activate Student Self-Registration
+            </button>
+          {% endif %}
+        </form>
+
         <button type="button"
                 onclick="openEditClassModal()"
                 class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition">
@@ -83,6 +103,16 @@
           <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
             {{ students | length }} {{ 'Student' if (students | length) == 1 else 'Students' }} Enrolled
           </span>
+          {% if class_page.allow_self_registration %}
+            <span class="px-3 py-1 rounded-xl bg-emerald-500/25 text-emerald-200 text-xs font-bold border border-emerald-400/40 inline-flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Student Self-Registration: OPEN
+            </span>
+          {% else %}
+            <span class="px-3 py-1 rounded-xl bg-white/10 text-slate-300 text-xs font-medium border border-white/10">
+              Student Self-Registration: Closed
+            </span>
+          {% endif %}
         </div>
 
         <div class="flex items-center gap-2">
@@ -438,7 +468,7 @@
           {% endfor %}
         {% else %}
           <!-- No Matching Student Found -->
-          <div class="bg-rose-50 border border-rose-200 rounded-2xl p-8 text-center">
+          <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center">
             <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -446,13 +476,18 @@
             </div>
             <h3 class="text-base font-bold text-rose-950">Student Record Not Found</h3>
             <p class="text-xs text-rose-800 max-w-md mx-auto mt-1 leading-relaxed">
-              No student matching <strong>"{{ verify_query }}"</strong> was found on the <strong>{{ class_page.course_code }}</strong> class roster. Please check your GTS Number, Phone Number, or Surname and try again, or contact <strong>{{ class_page.lecturer_name }}</strong>.
+              No student matching <strong>"{{ verify_query }}"</strong> was found on the <strong>{{ class_page.course_code }}</strong> class roster.
+              {% if class_page.allow_self_registration %}
+                Use the <strong>Add Your Details</strong> form below to register yourself onto the class list now.
+              {% else %}
+                Student self-registration is currently deactivated by <strong>{{ class_page.lecturer_name }}</strong>.
+              {% endif %}
             </p>
           </div>
         {% endif %}
       {% else %}
         <!-- Default Instructions Card before Search -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-7 text-center">
           <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3">
             <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -478,6 +513,110 @@
           </div>
         </div>
       {% endif %}
+
+      <!-- Student Self-Registration Section (Controlled by Lecturer Activate/Deactivate) -->
+      {% if class_page.allow_self_registration %}
+        {% if not verified_results %}
+          <div class="bg-white rounded-2xl border-2 border-emerald-300 shadow-sm overflow-hidden">
+            <div class="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold uppercase">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Self-Registration Active
+                </span>
+                <h3 class="text-base font-bold mt-1">
+                  Not on the {{ class_page.course_code }} List? Add Your Details
+                </h3>
+                <p class="text-xs text-emerald-100/80">
+                  Fill in your accurate details below to add yourself to the official {{ class_page.course_code }} class roster.
+                </p>
+              </div>
+            </div>
+
+            <form method="POST"
+                  action="{{ url_for('student_self_register', class_code=class_page.class_code) }}"
+                  class="p-6 space-y-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                    Full Name (Surname First) *
+                  </label>
+                  <input type="text"
+                         name="full_name"
+                         required
+                         placeholder="e.g. ADEBAYO JOHN TAIWO"
+                         class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                    GTS Number *
+                  </label>
+                  <input type="text"
+                         name="gts_number"
+                         required
+                         placeholder="e.g. GTS2618435"
+                         class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                    Matric Number <span class="text-slate-400 font-normal">(Leave blank if not issued)</span>
+                  </label>
+                  <input type="text"
+                         name="matric_number"
+                         placeholder="e.g. 26010211050 or leave blank"
+                         class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <input type="text"
+                         name="phone_number"
+                         required
+                         placeholder="e.g. 08012345678"
+                         class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+
+              <button type="submit"
+                      class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider shadow-md transition">
+                Add My Details to {{ class_page.course_code }} Class List
+              </button>
+            </form>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="bg-slate-100 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span class="w-8 h-8 rounded-xl bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 font-bold text-xs">
+              &#128274;
+            </span>
+            <div>
+              <p class="text-xs font-bold text-slate-800">
+                New Student Self-Registration is Currently Closed
+              </p>
+              <p class="text-[11px] text-slate-500">
+                Only students already on the list can verify or update their Matric Number unless the lecturer activates self-registration.
+              </p>
+            </div>
+          </div>
+
+          {% if is_owner or is_admin %}
+            <form method="POST"
+                  action="{{ url_for('toggle_class_self_registration', class_id=class_page.id) }}"
+                  class="shrink-0">
+              <input type="hidden" name="return_tab" value="verify" />
+              <button type="submit"
+                      class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition">
+                Activate Now
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
     </div>
 
   </div>
@@ -488,8 +627,45 @@
   <div id="tab-panel-students" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
     {% if is_owner or is_admin %}
-      <!-- Left 4 Cols: Bulk Upload Excel/CSV + Manual Add Student -->
+      <!-- Left 4 Cols: Self-Registration Control + Bulk Upload Excel/CSV + Manual Add Student -->
       <div class="lg:col-span-4 space-y-6">
+
+        <!-- Card 0: Lecturer Control for Student Self-Registration -->
+        <div class="bg-white rounded-2xl border {{ 'border-emerald-300' if class_page.allow_self_registration else 'border-slate-200' }} shadow-sm p-5 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900">Student Self-Registration</h2>
+              <p class="text-[11px] text-slate-500">
+                Allow students not on the list to add their details via the public class link
+              </p>
+            </div>
+            {% if class_page.allow_self_registration %}
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Active
+              </span>
+            {% else %}
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                Deactivated
+              </span>
+            {% endif %}
+          </div>
+
+          <form method="POST"
+                action="{{ url_for('toggle_class_self_registration', class_id=class_page.id) }}">
+            <input type="hidden" name="return_tab" value="students" />
+            {% if class_page.allow_self_registration %}
+              <button type="submit"
+                      class="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-xs transition">
+                Deactivate Student Self-Registration
+              </button>
+            {% else %}
+              <button type="submit"
+                      class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-xs transition">
+                Activate Student Self-Registration
+              </button>
+            {% endif %}
+          </form>
+        </div>
 
         <!-- Card 1: Upload Excel / CSV -->
         <div class="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">

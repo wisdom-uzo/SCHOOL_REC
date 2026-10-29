@@ -426,6 +426,7 @@ def create_class_page(
         "venue": (venue or "").strip(),
         "description": (description or "").strip(),
         "class_code": class_code,
+        "allow_self_registration": False,
         "status": "active",
         "created_at": now_iso,
     }
@@ -789,6 +790,104 @@ def student_self_update_matric(class_id, student_id, verification_token, new_mat
     )
     if res["ok"]:
         return {"ok": True, "student": res["student"]}
+    return res
+
+
+def student_self_register_in_class(
+    class_id,
+    full_name,
+    matric_number,
+    gts_number,
+    phone_number,
+):
+    """
+    Allow a student on the public class page to add their own record to the class roster
+    ONLY when the lecturer has activated `allow_self_registration` on the class.
+    Includes duplicate detection against existing GTS Number, Matric Number, or Full Name.
+    """
+    cls = get_class_by_id(class_id)
+    if not cls:
+        return {"ok": False, "error": "Class page not found."}
+
+    if not cls.get("allow_self_registration", False):
+        return {
+            "ok": False,
+            "error": "Student self-registration is currently deactivated by the lecturer for this course.",
+        }
+
+    full_name_clean = re.sub(r"\s+", " ", (full_name or "")).strip().upper()
+    gts_clean = re.sub(r"\s+", "", (gts_number or "")).strip().upper()
+    matric_clean = re.sub(r"\s+", " ", (matric_number or "")).strip().upper()
+    phone_clean = re.sub(r"\s+", " ", (phone_number or "")).strip()
+
+    if not full_name_clean or len(full_name_clean) < 3:
+        return {"ok": False, "error": "Please enter your complete Full Name (Surname first)."}
+
+    if not _is_valid_id(gts_clean) and not _is_valid_id(matric_clean):
+        return {
+            "ok": False,
+            "error": "Please provide a valid GTS Number or Matric Number.",
+        }
+
+    if not phone_clean or len(re.sub(r"[^0-9]+", "", phone_clean)) < 7:
+        return {"ok": False, "error": "Please provide a valid Phone Number."}
+
+    if not _is_valid_id(matric_clean):
+        matric_clean = "NOT AVAILABLE"
+
+    # Check if student is already on the class list to prevent duplicates
+    existing_students = get_students_by_class(class_id)
+    new_gts_alnum = re.sub(r"[^A-Z0-9]+", "", gts_clean)
+    new_gts_digits = re.sub(r"[^0-9]+", "", gts_clean)
+    new_mat_alnum = re.sub(r"[^A-Z0-9]+", "", matric_clean) if _is_valid_id(matric_clean) else ""
+
+    for st in existing_students:
+        st_gts_alnum = re.sub(r"[^A-Z0-9]+", "", (st.get("gts_number") or "").upper())
+        st_gts_digits = re.sub(r"[^0-9]+", "", (st.get("gts_number") or ""))
+        st_mat_raw = (st.get("matric_number") or "").upper()
+        st_mat_alnum = re.sub(r"[^A-Z0-9]+", "", st_mat_raw) if _is_valid_id(st_mat_raw) else ""
+        st_name = re.sub(r"\s+", " ", (st.get("full_name") or "")).strip().upper()
+
+        if new_gts_alnum and st_gts_alnum and (
+            new_gts_alnum == st_gts_alnum
+            or (len(new_gts_digits) >= 6 and new_gts_digits == st_gts_digits)
+        ):
+            return {
+                "ok": False,
+                "already_exists": True,
+                "student": st,
+                "error": f"Your GTS Number ({st.get('gts_number')}) is already on the class list under '{st.get('full_name')}' (Roster #{st.get('serial_no')}).",
+            }
+
+        if new_mat_alnum and st_mat_alnum and new_mat_alnum == st_mat_alnum:
+            return {
+                "ok": False,
+                "already_exists": True,
+                "student": st,
+                "error": f"Matric Number '{matric_clean}' is already registered on the class list under '{st.get('full_name')}' (Roster #{st.get('serial_no')}).",
+            }
+
+        if full_name_clean == st_name:
+            return {
+                "ok": False,
+                "already_exists": True,
+                "student": st,
+                "error": f"'{st.get('full_name')}' is already on the class list (Roster #{st.get('serial_no')}).",
+            }
+
+    res = add_student_to_class(
+        class_id=class_id,
+        lecturer_id=cls.get("lecturer_id", ""),
+        full_name=full_name_clean,
+        matric_number=matric_clean,
+        gts_number=gts_clean,
+        phone_number=phone_clean,
+    )
+    if res["ok"]:
+        return {
+            "ok": True,
+            "query_key": gts_clean if _is_valid_id(gts_clean) else full_name_clean,
+        }
     return res
 
 

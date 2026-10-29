@@ -45,6 +45,7 @@ from firebase_service import (
     parse_scores_spreadsheet,
     parse_students_spreadsheet,
     save_assessment_scores,
+    student_self_register_in_class,
     student_self_update_matric,
     update_class_fields,
     update_student_fields,
@@ -522,6 +523,86 @@ def student_update_own_matric(class_code):
         )
 
 
+@app.route("/class/<class_code>/self-register", methods=["POST"])
+def student_self_register(class_code):
+    """
+    Allow a student on the public class page to add their details to the class list
+    ONLY if the lecturer has activated `allow_self_registration`.
+    """
+    cls = get_class_by_code(class_code)
+    if not cls:
+        cls = get_class_by_id(class_code)
+    if not cls:
+        flash("Class page not found.", "danger")
+        return redirect(url_for("index"))
+
+    full_name = request.form.get("full_name", "").strip()
+    gts_number = request.form.get("gts_number", "").strip()
+    matric_number = request.form.get("matric_number", "").strip()
+    phone_number = request.form.get("phone_number", "").strip()
+
+    res = student_self_register_in_class(
+        class_id=cls["id"],
+        full_name=full_name,
+        matric_number=matric_number,
+        gts_number=gts_number,
+        phone_number=phone_number,
+    )
+
+    if res.get("ok"):
+        q_key = res.get("query_key") or gts_number or full_name
+        flash(
+            f"Your record has been added to the {cls.get('course_code')} class list! Below is your verified enrollment card.",
+            "success",
+        )
+        return redirect(
+            url_for("public_class_page", class_code=cls["class_code"], q=q_key, tab="verify")
+        )
+    elif res.get("already_exists"):
+        st = res.get("student") or {}
+        q_key = st.get("gts_number") or st.get("full_name") or gts_number or full_name
+        flash(res.get("error", "You are already on the class list."), "info")
+        return redirect(
+            url_for("public_class_page", class_code=cls["class_code"], q=q_key, tab="verify")
+        )
+    else:
+        flash(res.get("error", "Could not register your details."), "danger")
+        return redirect(
+            url_for("public_class_page", class_code=cls["class_code"], q=gts_number or full_name, tab="verify")
+        )
+
+
+@app.route("/lecturer/classes/<class_id>/toggle-self-registration", methods=["POST"])
+@login_required
+def toggle_class_self_registration(class_id):
+    """Allow the lecturer (or admin) to activate or deactivate student self-registration for a class."""
+    cls = get_class_by_id(class_id)
+    if not cls:
+        flash("Class page not found.", "danger")
+        return redirect(url_for("index"))
+
+    if session.get("user_id") != cls.get("lecturer_id") and session.get("role") != "admin":
+        flash("Only the assigned lecturer can change self-registration settings.", "danger")
+        return redirect(url_for("view_class_page", class_id=class_id))
+
+    current_state = bool(cls.get("allow_self_registration", False))
+    new_state = not current_state
+
+    res = update_class_fields(class_id, {"allow_self_registration": new_state})
+    if res["ok"]:
+        state_label = "ACTIVATED" if new_state else "DEACTIVATED"
+        msg_type = "success" if new_state else "warning"
+        flash(
+            f"Student Self-Registration has been {state_label} for {cls.get('course_code')}.",
+            msg_type,
+        )
+    else:
+        flash(res["error"], "danger")
+
+    return_tab = request.form.get("return_tab", "students")
+    return redirect(url_for("view_class_page", class_id=class_id, tab=return_tab))
+
+
 @app.route("/lecturer/classes/<class_id>/update", methods=["POST"])
 @login_required
 def update_lecturer_class(class_id):
@@ -561,6 +642,8 @@ def update_lecturer_class(class_id):
         "description": description,
         "status": status,
     }
+    if "allow_self_registration" in request.form:
+        updates["allow_self_registration"] = request.form.get("allow_self_registration") == "true"
 
     res = update_class_fields(class_id, updates)
     if res["ok"]:
